@@ -1,0 +1,32 @@
+[package]
+name = "cfd_sys"
+version = "0.0.1"
+license = "MIT"
+readme = "../README.md"
+keywords = ["build-dependencies"]
+description = """
+Crypto Finance Development Kit for Rust cfd-sys.
+A build dependency for running `cmake` to build a native library
+"""
+categories = ["development-tools::build-utils"]
+build = "build.rs"
+links = "cfd"
+
+[package.metadata.docs.rs]
+features = [ "serde" ]
+all-features = true
+
+[dependencies]
+libc = "0.2.74"
+
+[build-dependencies]
+cmake = "0.1.31"
+pkg-config = "0.3.18"
+
+[features]
+# When building from source, enable building optimized assembly routines. As
+# noted in `contrib/README.contrib`, these routines are experimental and not
+# vetted, use at your own risk!
+asm = []
+# Enable this feature if you want to have a staticly linked cfd
+static = []
