@@ -16,7 +16,6 @@ path = "src/lib.rs"
 
 [dependencies]
 libc = "0.2.74"
-ferris-says = "0.2"
 hex = "0.4.2"
 slice_as_array = "1.1.0"
 cfd_sys = { path = "./cfd-sys" }
@@ -26,6 +25,3 @@ sha2 = "0.9.1"
 
 [[example]]
 name = "create_pubkey_address"
-
-# [[example]]
-# name = "sign_verify"
