@@ -9,9 +9,8 @@ use crate::common::{
 use std::ffi::CString;
 use std::fmt;
 use std::ptr;
-use std::result::Result;
 use std::result::Result::{Err, Ok};
-use std::str;
+use std::str::FromStr;
 
 use self::cfd_sys::{
   CfdAddCombinePubkey, CfdCalculateEcSignature, CfdCalculateSchnorrSignature,
@@ -798,7 +797,7 @@ impl fmt::Display for Privkey {
   }
 }
 
-impl str::FromStr for Privkey {
+impl FromStr for Privkey {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<Privkey, CfdError> {
     let wif_result = Privkey::from_wif(text);
@@ -1522,7 +1521,7 @@ impl fmt::Display for Pubkey {
   }
 }
 
-impl str::FromStr for Pubkey {
+impl FromStr for Pubkey {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<Pubkey, CfdError> {
     let result = byte_from_hex(text);
@@ -1691,7 +1690,7 @@ impl fmt::Display for SigHashType {
   }
 }
 
-/// a container that stores sign parameter.
+/// A container that stores sign parameter.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SignParameter {
   data: Vec<u8>,
@@ -1999,7 +1998,7 @@ impl fmt::Display for SignParameter {
   }
 }
 
-impl str::FromStr for SignParameter {
+impl FromStr for SignParameter {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<SignParameter, CfdError> {
     let result = byte_from_hex(text);

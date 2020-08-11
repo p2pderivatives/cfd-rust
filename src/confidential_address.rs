@@ -7,9 +7,7 @@ use crate::{address::Address, key::Pubkey};
 use std::ffi::CString;
 use std::fmt;
 use std::ptr;
-use std::result::Result;
 use std::result::Result::{Err, Ok};
-use std::str;
 use std::str::FromStr;
 
 use self::cfd_sys::{CfdCreateConfidentialAddress, CfdParseConfidentialAddress};
@@ -141,7 +139,7 @@ impl ConfidentialAddress {
   }
 }
 
-impl str::FromStr for ConfidentialAddress {
+impl FromStr for ConfidentialAddress {
   type Err = CfdError;
   fn from_str(string: &str) -> Result<ConfidentialAddress, CfdError> {
     ConfidentialAddress::parse(string)

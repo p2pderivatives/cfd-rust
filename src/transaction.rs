@@ -14,9 +14,7 @@ use crate::script::Script;
 use std::ffi::CString;
 use std::fmt;
 use std::ptr;
-use std::result::Result;
 use std::result::Result::{Err, Ok};
-use std::str;
 use std::str::FromStr;
 
 use self::cfd_sys::{
@@ -57,7 +55,7 @@ impl Txid {
   }
 }
 
-impl str::FromStr for Txid {
+impl FromStr for Txid {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<Txid, CfdError> {
     let result = byte_from_hex(text);
@@ -806,7 +804,7 @@ impl Transaction {
   }
 }
 
-impl str::FromStr for Transaction {
+impl FromStr for Transaction {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);

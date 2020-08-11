@@ -1,15 +1,12 @@
 extern crate cfd_rust;
 
-use std::str;
-use std::str::FromStr;
-
 #[cfg(test)]
 mod tests {
-  use super::*;
   use cfd_rust::{
     Address, Amount, ExtPrivkey, HashType, Network, OutPoint, SigHashType, SignParameter,
     Transaction, TxInData, TxOutData,
   };
+  use std::str::FromStr;
 
   #[test]
   fn create_raw_transaction_test() {

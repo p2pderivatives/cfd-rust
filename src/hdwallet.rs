@@ -10,9 +10,7 @@ use crate::key::{Privkey, Pubkey};
 use std::ffi::CString;
 use std::fmt;
 use std::ptr;
-use std::result::Result;
 use std::result::Result::{Err, Ok};
-use std::str;
 use std::str::FromStr;
 
 use self::cfd_sys::{
@@ -602,7 +600,7 @@ impl fmt::Display for ExtPrivkey {
   }
 }
 
-impl str::FromStr for ExtPrivkey {
+impl FromStr for ExtPrivkey {
   type Err = CfdError;
   fn from_str(string: &str) -> Result<ExtPrivkey, CfdError> {
     ExtPrivkey::new(string)
@@ -851,7 +849,7 @@ impl fmt::Display for ExtPubkey {
   }
 }
 
-impl str::FromStr for ExtPubkey {
+impl FromStr for ExtPubkey {
   type Err = CfdError;
   fn from_str(string: &str) -> Result<ExtPubkey, CfdError> {
     ExtPubkey::new(string)

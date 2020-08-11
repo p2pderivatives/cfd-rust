@@ -10,9 +10,7 @@ use crate::script::Script;
 use std::ffi::CString;
 use std::fmt;
 use std::ptr;
-use std::result::Result;
 use std::result::Result::{Err, Ok};
-use std::str;
 use std::str::FromStr;
 
 use self::cfd_sys::{

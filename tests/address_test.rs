@@ -1,12 +1,9 @@
 extern crate cfd_rust;
 
-use std::str;
-
 #[cfg(test)]
 mod tests {
-  use super::*;
   use cfd_rust::{Address, Network, Pubkey};
-  use str::FromStr;
+  use std::str::FromStr;
 
   #[test]
   fn address() {

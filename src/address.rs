@@ -7,9 +7,7 @@ use crate::{key::Pubkey, script::Script};
 use std::ffi::CString;
 use std::fmt;
 use std::ptr;
-use std::result::Result;
 use std::result::Result::{Err, Ok};
-use std::str;
 use std::str::FromStr;
 
 use self::cfd_sys::{
@@ -598,7 +596,7 @@ impl Address {
   }
 }
 
-impl str::FromStr for Address {
+impl FromStr for Address {
   type Err = CfdError;
   fn from_str(string: &str) -> Result<Address, CfdError> {
     Address::from_string(string)

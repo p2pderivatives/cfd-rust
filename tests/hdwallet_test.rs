@@ -1,10 +1,7 @@
 extern crate cfd_rust;
 
-use std::str;
-
 #[cfg(test)]
 mod tests {
-  use super::*;
   use cfd_rust::{ExtPrivkey, ExtPubkey};
 
   #[test]

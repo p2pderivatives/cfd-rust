@@ -1,13 +1,11 @@
 extern crate cfd_rust;
 extern crate sha2;
 
-use std::str::FromStr;
-
 #[cfg(test)]
 mod tests {
-  use super::*;
   use cfd_rust::{Privkey, Pubkey, SignParameter};
   use sha2::{Digest, Sha256};
+  use std::str::FromStr;
 
   #[test]
   fn pubkey() {

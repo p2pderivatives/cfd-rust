@@ -12,7 +12,6 @@ use crate::{
 use std::ffi::CString;
 use std::fmt;
 use std::ptr;
-use std::result::Result;
 use std::result::Result::{Err, Ok};
 
 use self::cfd_sys::{

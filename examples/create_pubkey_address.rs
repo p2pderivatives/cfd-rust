@@ -1,8 +1,7 @@
 extern crate cfd_rust;
 
 use cfd_rust::{Address, Network, Pubkey, Script};
-use std::str;
-use str::FromStr;
+use std::str::FromStr;
 
 fn main() {
   let pubkey_str: &str = "036b67e1bd3bd3efbc37fdc738ab159a4aa527057eae12a0c4b07d3132580dcdfd";
