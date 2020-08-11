@@ -577,6 +577,18 @@ pub(in crate) fn byte_from_hex_unsafe(hex: &str) -> Vec<u8> {
   result
 }
 
+pub(in crate) fn copy_array_32byte(buffer: &[u8]) -> [u8; 32] {
+  let mut result: [u8; 32] = [0; 32];
+  if buffer.len() >= 32 {
+    let mut index: usize = 0;
+    while index < result.len() {
+      result[index] = buffer[index];
+      index += 1;
+    }
+  }
+  result
+}
+
 /// # Safety
 ///
 /// This function should not be called before the horsemen are ready.

@@ -17,7 +17,6 @@ path = "src/lib.rs"
 [dependencies]
 libc = "0.2.74"
 hex = "0.4.2"
-slice_as_array = "1.1.0"
 cfd_sys = { path = "./cfd-sys" }
 
 [dev-dependencies]

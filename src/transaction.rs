@@ -6,7 +6,8 @@ use self::libc::{c_char, c_uint, c_void};
 use crate::address::{Address, HashType};
 use crate::common::{
   alloc_c_string, byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free,
-  collect_multi_cstring_and_free, hex_from_bytes, Amount, ByteData, CfdError, ErrorHandle, Network,
+  collect_multi_cstring_and_free, copy_array_32byte, hex_from_bytes, Amount, ByteData, CfdError,
+  ErrorHandle, Network,
 };
 use crate::descriptor::Descriptor;
 use crate::key::{KeyPair, Privkey, Pubkey, SigHashType, SignParameter};
@@ -67,10 +68,7 @@ impl FromStr for Txid {
       let byte_data = ByteData::from_slice_reverse(&bytes);
       let reverse_bytes = byte_data.to_slice();
       let mut txid = Txid::default();
-      let result = slice_as_array!(&reverse_bytes, [u8; TXID_SIZE]);
-      if let Some(value) = result {
-        txid.txid = *value;
-      }
+      txid.txid = copy_array_32byte(&reverse_bytes);
       Ok(txid)
     }
   }

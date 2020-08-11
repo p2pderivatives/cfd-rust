@@ -4,7 +4,8 @@ extern crate libc;
 use self::libc::{c_char, c_int, c_void};
 use crate::common::{
   alloc_c_string, byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free,
-  collect_multi_cstring_and_free, hex_from_bytes, ByteData, CfdError, ErrorHandle, Network,
+  collect_multi_cstring_and_free, copy_array_32byte, hex_from_bytes, ByteData, CfdError,
+  ErrorHandle, Network,
 };
 use std::fmt;
 use std::ptr;
@@ -46,12 +47,7 @@ impl Privkey {
       net_type: Network::Mainnet,
       is_compressed: true,
     };
-    if key.len() >= PRIVKEY_SIZE {
-      let result = slice_as_array!(&key, [u8; PRIVKEY_SIZE]);
-      if let Some(value) = result {
-        privkey.key = *value;
-      }
-    }
+    privkey.key = copy_array_32byte(&key);
     privkey
   }
 

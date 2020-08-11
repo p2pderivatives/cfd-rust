@@ -3,9 +3,6 @@
 #![crate_type = "dylib"]
 #![crate_name = "cfd_rust"]
 
-#[macro_use]
-extern crate slice_as_array;
-
 pub mod address;
 pub mod common;
 pub mod confidential_address;
