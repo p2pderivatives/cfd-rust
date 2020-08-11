@@ -2,9 +2,11 @@ extern crate cfd_sys;
 extern crate libc;
 
 use self::libc::{c_char, c_int, c_uint, c_void};
-use crate::common::{collect_cstring_and_free, CfdError, ErrorHandle, Network};
+use crate::common::{
+  alloc_c_string, collect_cstring_and_free, collect_multi_cstring_and_free, CfdError, ErrorHandle,
+  Network,
+};
 use crate::{key::Pubkey, script::Script};
-use std::ffi::CString;
 use std::fmt;
 use std::ptr;
 use std::result::Result::{Err, Ok};
@@ -190,18 +192,8 @@ pub struct Address {
 
 impl Address {
   pub fn from_string(address: &str) -> Result<Address, CfdError> {
-    let result: Result<Address, CfdError>;
-
-    let addr_str = CString::new(address.to_string());
-    if addr_str.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let addr = addr_str.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let addr = alloc_c_string(address)?;
+    let handle = ErrorHandle::new()?;
     let mut network_type_c: c_int = 0;
     let mut hash_type_c: c_int = 0;
     let mut witness_version_c: c_int = 0;
@@ -218,54 +210,30 @@ impl Address {
         &mut hash,
       )
     };
-    if error_code == 0 {
-      let script_obj;
-      let hash_obj;
-      unsafe {
-        script_obj = collect_cstring_and_free(locking_script);
-        hash_obj = collect_cstring_and_free(hash);
+    let result = match error_code {
+      0 => {
+        let str_list = unsafe { collect_multi_cstring_and_free(&[locking_script, hash]) }?;
+        let script_obj = &str_list[0];
+        let script = Script::from_hex(script_obj)?;
+        let hash_type = HashType::from_c_value(hash_type_c);
+        Ok(Address {
+          address: address.to_string(),
+          locking_script: script,
+          network_type: Network::from_c_value(network_type_c),
+          address_type: hash_type.to_address_type(),
+          p2sh_wrapped_segwit_script: Script::default(),
+          witness_version: hash_type.get_witness_version(),
+        })
       }
-      if let Err(cfd_error) = script_obj {
-        result = Err(cfd_error);
-      } else if let Err(cfd_error) = hash_obj {
-        result = Err(cfd_error);
-      } else {
-        let script = Script::from_hex(&script_obj.unwrap());
-        if let Err(cfd_error) = script {
-          result = Err(cfd_error);
-        } else {
-          let hash_type = HashType::from_c_value(hash_type_c);
-          let addr_obj = Address {
-            address: address.to_string(),
-            locking_script: script.unwrap(),
-            network_type: Network::from_c_value(network_type_c),
-            address_type: hash_type.to_address_type(),
-            p2sh_wrapped_segwit_script: Script::default(),
-            witness_version: hash_type.get_witness_version(),
-          };
-          result = Ok(addr_obj);
-        }
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
 
   pub fn from_locking_script(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
-    let result: Result<Address, CfdError>;
-
-    let hex_obj = CString::new(script.to_hex());
-    if hex_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let hex = hex_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let hex = alloc_c_string(&script.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut address: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdGetAddressFromLockingScript(
@@ -275,16 +243,13 @@ impl Address {
         &mut address,
       )
     };
-    if error_code == 0 {
-      let address_obj = unsafe { collect_cstring_and_free(address) };
-      if let Err(cfd_error) = address_obj {
-        result = Err(cfd_error);
-      } else {
-        result = Address::from_string(&address_obj.unwrap());
+    let result = match error_code {
+      0 => {
+        let address_obj = unsafe { collect_cstring_and_free(address) }?;
+        Address::from_string(&address_obj)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -296,13 +261,10 @@ impl Address {
     address_type: &AddressType,
     network_type: &Network,
   ) -> Result<Address, CfdError> {
-    let script = Script::multisig(require_num, pubkey_list);
-    if let Err(ret) = script {
-      return Err(ret);
-    }
+    let script = Script::multisig(require_num, pubkey_list)?;
     Address::get_address(
       ptr::null(),
-      &script.unwrap(),
+      &script,
       address_type.to_c_value(),
       network_type.to_c_value(),
     )
@@ -412,21 +374,8 @@ impl Address {
     address_type: &AddressType,
     network_type: &Network,
   ) -> Result<Vec<MultisigItem>, CfdError> {
-    let mut result: Result<Vec<MultisigItem>, CfdError> = Err(CfdError::Unknown(
-      "Failed to get_multisig_addresses.".to_string(),
-    ));
-
-    let redeem_script_obj = CString::new(multisig_script.to_hex());
-    if redeem_script_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let redeem_script = redeem_script_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let redeem_script = alloc_c_string(&multisig_script.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut max_key_num: c_uint = 0;
     let mut addr_multisig_keys_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe {
@@ -439,68 +388,56 @@ impl Address {
         &mut max_key_num,
       )
     };
-    if error_code == 0 {
-      let mut list: Vec<MultisigItem> = vec![];
-      list.reserve(max_key_num as usize);
-      let mut index = 0;
+    let result = match error_code {
+      0 => {
+        let ret = {
+          let mut list: Vec<MultisigItem> = vec![];
+          list.reserve(max_key_num as usize);
+          let mut index = 0;
+          let mut result: Result<Vec<MultisigItem>, CfdError> = Err(CfdError::Unknown(
+            "Failed to get_multisig_addresses.".to_string(),
+          ));
 
-      while index < max_key_num {
-        let mut address: *mut c_char = ptr::null_mut();
-        let mut pubkey: *mut c_char = ptr::null_mut();
-        let error_code = unsafe {
-          CfdGetAddressFromMultisigKey(
-            handle.as_handle(),
-            addr_multisig_keys_handle,
-            index,
-            &mut address,
-            &mut pubkey,
-          )
-        };
-        if error_code == 0 {
-          let addr_obj;
-          let pubkey_obj;
-          unsafe {
-            addr_obj = collect_cstring_and_free(address);
-            pubkey_obj = collect_cstring_and_free(pubkey);
-          }
-          if let Err(ret) = addr_obj {
-            result = Err(ret);
-            break;
-          } else if let Err(ret) = pubkey_obj {
-            result = Err(ret);
-            break;
-          } else {
-            let address = Address::from_string(&addr_obj.unwrap());
-            let pubkey = Pubkey::from_str(&pubkey_obj.unwrap());
-            if let Err(cfd_error) = address {
-              result = Err(cfd_error);
-              break;
-            } else if let Err(cfd_error) = pubkey {
-              result = Err(cfd_error);
-              break;
-            } else {
-              let item = MultisigItem {
-                address: address.unwrap(),
-                pubkey: pubkey.unwrap(),
+          while index < max_key_num {
+            let item = {
+              let mut address: *mut c_char = ptr::null_mut();
+              let mut pubkey: *mut c_char = ptr::null_mut();
+              let error_code = unsafe {
+                CfdGetAddressFromMultisigKey(
+                  handle.as_handle(),
+                  addr_multisig_keys_handle,
+                  index,
+                  &mut address,
+                  &mut pubkey,
+                )
               };
-              list.push(item);
-            }
+              match error_code {
+                0 => {
+                  let str_list = unsafe { collect_multi_cstring_and_free(&[address, pubkey]) }?;
+                  let addr_obj = &str_list[0];
+                  let pubkey_obj = &str_list[1];
+                  let address = Address::from_string(&addr_obj)?;
+                  let pubkey = Pubkey::from_str(&pubkey_obj)?;
+                  Ok(MultisigItem { address, pubkey })
+                }
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
+            list.push(item);
+            index += 1;
           }
-        } else {
-          result = Err(handle.get_error(error_code));
-          break;
+          if list.len() == (max_key_num as usize) {
+            result = Ok(list)
+          }
+          result
+        };
+        unsafe {
+          CfdFreeAddressesMultisigHandle(handle.as_handle(), addr_multisig_keys_handle);
         }
-        index += 1;
+        ret
       }
-      unsafe {
-        CfdFreeAddressesMultisigHandle(handle.as_handle(), addr_multisig_keys_handle);
-      }
-      if list.len() == (max_key_num as usize) {
-        result = Ok(list);
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -511,33 +448,19 @@ impl Address {
     hash_type: c_int,
     network_type: c_int,
   ) -> Result<Address, CfdError> {
-    let result: Result<Address, CfdError>;
-
-    let pubkey_obj = unsafe {
-      if let Some(pubkey) = pubkey.as_ref() {
-        CString::new(pubkey.to_hex())
-      } else {
-        CString::new(String::default())
+    let pubkey_hex = unsafe {
+      match pubkey.as_ref() {
+        Some(pubkey) => alloc_c_string(&pubkey.to_hex()),
+        _ => alloc_c_string(""),
       }
-    };
-    let redeem_script_obj = unsafe {
-      if let Some(script) = script.as_ref() {
-        CString::new(script.to_hex())
-      } else {
-        CString::new(String::default())
+    }?;
+    let redeem_script = unsafe {
+      match script.as_ref() {
+        Some(script) => alloc_c_string(&script.to_hex()),
+        _ => alloc_c_string(""),
       }
-    };
-    if pubkey_obj.is_err() || redeem_script_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey_hex = pubkey_obj.unwrap();
-    let redeem_script = redeem_script_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    }?;
+    let handle = ErrorHandle::new()?;
     let mut address: *mut c_char = ptr::null_mut();
     let mut locking_script: *mut c_char = ptr::null_mut();
     let mut p2sh_segwit_locking_script: *mut c_char = ptr::null_mut();
@@ -553,44 +476,28 @@ impl Address {
         &mut p2sh_segwit_locking_script,
       )
     };
-    if error_code == 0 {
-      let addr_obj;
-      let script_obj;
-      let segwit_obj;
-      unsafe {
-        addr_obj = collect_cstring_and_free(address);
-        script_obj = collect_cstring_and_free(locking_script);
-        segwit_obj = collect_cstring_and_free(p2sh_segwit_locking_script);
+    let result = match error_code {
+      0 => {
+        let str_list = unsafe {
+          collect_multi_cstring_and_free(&[address, locking_script, p2sh_segwit_locking_script])
+        }?;
+        let addr_obj = &str_list[0];
+        let script_obj = &str_list[1];
+        let segwit_obj = &str_list[2];
+        let addr_locking_script = Script::from_hex(script_obj)?;
+        let segwit_script = Script::from_hex(segwit_obj)?;
+        let hash_type_obj = HashType::from_c_value(hash_type);
+        Ok(Address {
+          address: addr_obj.clone(),
+          locking_script: addr_locking_script,
+          network_type: Network::from_c_value(network_type),
+          address_type: hash_type_obj.to_address_type(),
+          p2sh_wrapped_segwit_script: segwit_script,
+          witness_version: hash_type_obj.get_witness_version(),
+        })
       }
-      if let Err(ret) = addr_obj {
-        result = Err(ret);
-      } else if let Err(ret) = script_obj {
-        result = Err(ret);
-      } else if let Err(ret) = segwit_obj {
-        result = Err(ret);
-      } else {
-        let addr_locking_script = Script::from_hex(&script_obj.unwrap());
-        let segwit_script = Script::from_hex(&segwit_obj.unwrap());
-        if let Err(cfd_error) = addr_locking_script {
-          result = Err(cfd_error);
-        } else if let Err(cfd_error) = segwit_script {
-          result = Err(cfd_error);
-        } else {
-          let hash_type_obj = HashType::from_c_value(hash_type);
-          let addr = Address {
-            address: addr_obj.unwrap(),
-            locking_script: addr_locking_script.unwrap(),
-            network_type: Network::from_c_value(network_type),
-            address_type: hash_type_obj.to_address_type(),
-            p2sh_wrapped_segwit_script: segwit_script.unwrap(),
-            witness_version: hash_type_obj.get_witness_version(),
-          };
-          result = Ok(addr);
-        }
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -605,9 +512,7 @@ impl FromStr for Address {
 
 impl fmt::Display for Address {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let address = &self.address;
-    write!(f, "{}", address)?;
-    Ok(())
+    write!(f, "{}", &self.address)
   }
 }
 
@@ -648,7 +553,6 @@ impl fmt::Display for MultisigItem {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let address = self.address.to_str();
     let pubkey = &self.pubkey.to_hex();
-    write!(f, "address:{}, pubkey:{}", address, pubkey)?;
-    Ok(())
+    write!(f, "address:{}, pubkey:{}", address, pubkey)
   }
 }

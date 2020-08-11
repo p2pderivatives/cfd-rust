@@ -268,30 +268,18 @@ impl ByteData {
   /// }
   /// ```
   pub fn serialize(&self) -> Result<ByteData, CfdError> {
-    let mut result: Result<ByteData, CfdError> =
-      Err(CfdError::Unknown("failed to serialize".to_string()));
-
-    let text: &str = &hex_from_bytes(&self.data);
-    let buffer = CString::new(text);
-    if buffer.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let buffer_data = buffer.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let buffer = alloc_c_string(&hex_from_bytes(&self.data))?;
+    let handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code =
-      unsafe { CfdSerializeByteData(handle.as_handle(), buffer_data.as_ptr(), &mut output) };
-    if error_code == 0 {
-      if let Ok(c_output) = unsafe { collect_cstring_and_free(output) } {
-        result = Ok(ByteData::from_slice(&byte_from_hex_unsafe(&c_output)));
+      unsafe { CfdSerializeByteData(handle.as_handle(), buffer.as_ptr(), &mut output) };
+    let result = match error_code {
+      0 => {
+        let c_output = unsafe { collect_cstring_and_free(output) }?;
+        Ok(ByteData::from_slice(&byte_from_hex_unsafe(&c_output)))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -323,10 +311,7 @@ impl ByteData {
 
 impl fmt::Display for ByteData {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    // fmt::LowerHex::fmt(self, f);
-    let s = hex::encode(&self.data);
-    write!(f, "{}", s)?;
-    Ok(())
+    write!(f, "{}", hex::encode(&self.data))
   }
 }
 
@@ -339,11 +324,8 @@ impl Default for ByteData {
 impl str::FromStr for ByteData {
   type Err = CfdError;
   fn from_str(hex: &str) -> Result<ByteData, CfdError> {
-    let result = byte_from_hex(hex);
-    match result {
-      Ok(result) => Ok(ByteData::from_slice(&result)),
-      Err(result) => Err(result),
-    }
+    let result = byte_from_hex(hex)?;
+    Ok(ByteData::from_slice(&result))
   }
 }
 
@@ -432,26 +414,18 @@ impl Amount {
   /// }
   /// ```
   pub fn as_byte(&self) -> Result<Vec<u8>, CfdError> {
-    let result: Result<Vec<u8>, CfdError>;
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdGetConfidentialValueHex(handle.as_handle(), self.satoshi_amount, true, &mut output)
     };
-    if error_code == 0 {
-      let hex = unsafe { collect_cstring_and_free(output) };
-      if let Err(e) = hex {
-        result = Err(e);
-      } else {
-        result = byte_from_hex(&hex.unwrap());
+    let result = match error_code {
+      0 => {
+        let hex = unsafe { collect_cstring_and_free(output) }?;
+        byte_from_hex(&hex)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -464,20 +438,9 @@ impl Default for Amount {
 }
 
 pub fn request_json(request: &str, option: &str) -> Result<String, CfdError> {
-  let result: Result<String, CfdError>;
-
-  let request_name = CString::new(request);
-  let option_data = CString::new(option);
-  if request_name.is_err() || option_data.is_err() {
-    return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-  }
-  let req_name = request_name.unwrap();
-  let opt_data = option_data.unwrap();
-  let err_handle = ErrorHandle::new();
-  if let Err(err_handle) = err_handle {
-    return Err(err_handle);
-  }
-  let handle = err_handle.unwrap();
+  let req_name = alloc_c_string(request)?;
+  let opt_data = alloc_c_string(option)?;
+  let handle = ErrorHandle::new()?;
   let mut output: *mut c_char = ptr::null_mut();
   let error_code = unsafe {
     CfdRequestExecuteJson(
@@ -487,11 +450,10 @@ pub fn request_json(request: &str, option: &str) -> Result<String, CfdError> {
       &mut output,
     )
   };
-  if error_code == 0 {
-    result = unsafe { collect_cstring_and_free(output) };
-  } else {
-    result = Err(handle.get_error(error_code));
-  }
+  let result = match error_code {
+    0 => unsafe { collect_cstring_and_free(output) },
+    _ => Err(handle.get_error(error_code)),
+  };
   handle.free_handle();
   result
 }
@@ -509,8 +471,7 @@ impl ErrorHandle {
     unsafe {
       let cfd_ret = CfdCreateSimpleHandle(&mut handle);
       if cfd_ret == 0 {
-        let check_null: *mut c_void = ptr::null_mut();
-        if handle != check_null {
+        if !handle.is_null() {
           result = Ok(ErrorHandle { handle });
         }
       } else {
@@ -546,8 +507,7 @@ impl ErrorHandle {
   pub fn free_handle(&self) -> bool {
     unsafe {
       let mut result: bool = false;
-      let check_null: *mut c_void = ptr::null_mut();
-      if self.handle == check_null {
+      if self.handle.is_null() {
         println!("CfdFreeHandle NG. null-ptr.");
       } else {
         let cfd_ret = CfdFreeHandle(self.handle);
@@ -581,21 +541,28 @@ impl ErrorHandle {
 }
 
 #[inline]
+pub(in crate) fn alloc_c_string(text: &str) -> Result<CString, CfdError> {
+  let result = CString::new(text);
+  match result {
+    Ok(string_buffer) => Ok(string_buffer),
+    Err(_) => Err(CfdError::MemoryFull("CString::new fail.".to_string())),
+  }
+}
+
+#[inline]
 pub(in crate) fn hex_from_bytes(bytes: &[u8]) -> String {
-  if bytes.is_empty() {
-    String::default()
-  } else {
-    hex::encode(bytes)
+  match bytes.is_empty() {
+    true => String::default(),
+    _ => hex::encode(bytes),
   }
 }
 
 #[inline]
 pub(in crate) fn byte_from_hex(hex: &str) -> Result<Vec<u8>, CfdError> {
-  let len = hex.len();
-  if (len % 2) != 0 {
-    return Err(CfdError::IllegalArgument("Illegal hex format.".to_string()));
+  match (hex.len() % 2) != 0 {
+    true => Err(CfdError::IllegalArgument("Illegal hex format.".to_string())),
+    _ => Ok(byte_from_hex_unsafe(hex)),
   }
-  Ok(byte_from_hex_unsafe(hex))
 }
 
 #[inline]
@@ -603,8 +570,7 @@ pub(in crate) fn byte_from_hex_unsafe(hex: &str) -> Vec<u8> {
   let mut result: Vec<u8> = vec![];
   let len = hex.len();
   if (len != 0) && ((len % 2) == 0) {
-    let dec = hex::decode(hex);
-    if let Ok(data) = dec {
+    if let Ok(data) = hex::decode(hex) {
       result = data;
     }
   }
@@ -614,20 +580,43 @@ pub(in crate) fn byte_from_hex_unsafe(hex: &str) -> Vec<u8> {
 /// # Safety
 ///
 /// This function should not be called before the horsemen are ready.
-pub(in crate) unsafe fn collect_cstring_and_free(address: *mut c_char) -> Result<String, CfdError> {
-  let mut result: Result<String, CfdError> = Err(CfdError::Unknown(
-    "Failed to convert CStr to str.".to_string(),
-  ));
-  let check_null: *mut c_char = ptr::null_mut() as *mut c_char;
-  if address != check_null {
-    let c_string: &CStr = CStr::from_ptr(address);
-    if let Ok(output) = c_string.to_str() {
-      result = Ok(output.to_string());
+pub(in crate) unsafe fn collect_multi_cstring_and_free(
+  address_list: &[*mut c_char],
+) -> Result<Vec<String>, CfdError> {
+  let mut list: Vec<String> = vec![];
+  let mut err_obj: CfdError = CfdError::Unknown(String::default());
+  for target in address_list {
+    match collect_cstring_and_free(*target) {
+      Ok(text) => list.push(text),
+      Err(e) => {
+        err_obj = e;
+      }
     }
-    libc::free(address as *mut libc::c_void);
-  } else {
-    // empty-response is not alloc buffer.
-    result = Ok(String::default());
   }
-  result
+  if list.len() == address_list.len() {
+    Ok(list)
+  } else {
+    Err(err_obj)
+  }
+}
+
+/// # Safety
+///
+/// This function should not be called before the horsemen are ready.
+pub(in crate) unsafe fn collect_cstring_and_free(address: *mut c_char) -> Result<String, CfdError> {
+  // empty-response is not alloc buffer.
+  match address.is_null() {
+    true => Ok(String::default()),
+    _ => {
+      let c_string: &CStr = CStr::from_ptr(address);
+      let result = match c_string.to_str() {
+        Ok(output) => Ok(output.to_string()),
+        _ => Err(CfdError::Unknown(
+          "Failed to convert CStr to str.".to_string(),
+        )),
+      };
+      libc::free(address as *mut libc::c_void);
+      result
+    }
+  }
 }

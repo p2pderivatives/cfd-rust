@@ -3,11 +3,13 @@ extern crate libc;
 
 use self::libc::{c_char, c_int, c_uint, c_void};
 use crate::address::{Address, HashType};
-use crate::common::{collect_cstring_and_free, CfdError, ErrorHandle, Network};
+use crate::common::{
+  alloc_c_string, collect_cstring_and_free, collect_multi_cstring_and_free, CfdError, ErrorHandle,
+  Network,
+};
 use crate::hdwallet::{ExtPrivkey, ExtPubkey};
 use crate::key::Pubkey;
 use crate::script::Script;
-use std::ffi::CString;
 use std::fmt;
 use std::ptr;
 use std::result::Result::{Err, Ok};
@@ -135,15 +137,14 @@ impl KeyData {
   }
 
   pub fn from_ext_privkey(ext_privkey: &ExtPrivkey) -> KeyData {
-    if ext_privkey.valid() {
-      KeyData {
+    match ext_privkey.valid() {
+      true => KeyData {
         key_type: DescriptorKeyType::Bip32Priv,
         pubkey: Pubkey::default(),
         ext_pubkey: ExtPubkey::default(),
         ext_privkey: ext_privkey.clone(),
-      }
-    } else {
-      KeyData::default()
+      },
+      _ => KeyData::default(),
     }
   }
 
@@ -355,11 +356,8 @@ pub struct Descriptor {
 
 impl Descriptor {
   pub fn new(descriptor: &str, network_type: &Network) -> Result<Descriptor, CfdError> {
-    let obj = Descriptor::append_checksum(descriptor, network_type);
-    if let Err(ret) = obj {
-      return Err(ret);
-    }
-    Descriptor::parse_descriptor(&obj.unwrap(), "", network_type)
+    let desc = Descriptor::append_checksum(descriptor, network_type)?;
+    Descriptor::parse_descriptor(&desc, "", network_type)
   }
 
   pub fn with_derive_bip32path(
@@ -367,11 +365,8 @@ impl Descriptor {
     bip32_path: &str,
     network_type: &Network,
   ) -> Result<Descriptor, CfdError> {
-    let obj = Descriptor::append_checksum(descriptor, network_type);
-    if let Err(ret) = obj {
-      return Err(ret);
-    }
-    Descriptor::parse_descriptor(&obj.unwrap(), bip32_path, network_type)
+    let desc = Descriptor::append_checksum(descriptor, network_type)?;
+    Descriptor::parse_descriptor(&desc, bip32_path, network_type)
   }
 
   pub fn p2pk(pubkey: &Pubkey, network_type: &Network) -> Result<Descriptor, CfdError> {
@@ -439,11 +434,10 @@ impl Descriptor {
   ) -> Result<Descriptor, CfdError> {
     let mut pubkeys = String::default();
     for pubkey in pubkey_list {
-      if pubkeys.is_empty() {
-        pubkeys = pubkey.to_hex();
-      } else {
-        pubkeys = format!("{},{}", pubkeys, pubkey.to_hex());
-      }
+      pubkeys = match pubkeys.is_empty() {
+        true => pubkey.to_hex(),
+        _ => format!("{},{}", pubkeys, pubkey.to_hex()),
+      };
     }
     let target = if use_sort { "sortedmulti" } else { "multi" };
     let desc_multi = format!("{}({},{})", target, require_num, pubkeys);
@@ -454,12 +448,8 @@ impl Descriptor {
       _ => Err(CfdError::IllegalArgument(
         "unsupported hash type.".to_string(),
       )),
-    };
-    if let Err(e) = desc {
-      Err(e)
-    } else {
-      Descriptor::new(&desc.unwrap(), network_type)
-    }
+    }?;
+    Descriptor::new(&desc, network_type)
   }
 
   fn parse_descriptor(
@@ -467,22 +457,9 @@ impl Descriptor {
     bip32_path: &str,
     network_type: &Network,
   ) -> Result<Descriptor, CfdError> {
-    let mut result: Result<Descriptor, CfdError> =
-      Err(CfdError::Unknown("Failed to parse_descriptor.".to_string()));
-
-    let descriptor_obj = CString::new(descriptor.to_string());
-    let bip32_path_obj = CString::new(bip32_path.to_string());
-    if descriptor_obj.is_err() || bip32_path_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let descriptor_str = descriptor_obj.unwrap();
-    let bip32_path_str = bip32_path_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let descriptor_str = alloc_c_string(descriptor)?;
+    let bip32_path_str = alloc_c_string(bip32_path)?;
+    let handle = ErrorHandle::new()?;
     let mut max_num: c_uint = 0;
     let mut descriptor_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe {
@@ -495,185 +472,151 @@ impl Descriptor {
         &mut max_num,
       )
     };
-    if error_code == 0 {
-      let mut list: Vec<DescriptorScriptData> = vec![];
-      list.reserve(max_num as usize);
-      let mut index = 0;
+    let result = match error_code {
+      0 => {
+        let ret = {
+          let mut result: Result<Descriptor, CfdError> =
+            Err(CfdError::Unknown("Failed to parse_descriptor.".to_string()));
+          let mut list: Vec<DescriptorScriptData> = vec![];
+          list.reserve(max_num as usize);
+          let mut index = 0;
 
-      while index <= max_num {
-        let mut max_index: c_uint = 0;
-        let mut depth: c_uint = 0;
-        let mut script_type: c_int = 0;
-        let mut key_type: c_int = 0;
-        let mut hash_type: c_int = 0;
-        let mut locking_script: *mut c_char = ptr::null_mut();
-        let mut address: *mut c_char = ptr::null_mut();
-        let mut pubkey: *mut c_char = ptr::null_mut();
-        let mut redeem_script: *mut c_char = ptr::null_mut();
-        let mut ext_pubkey: *mut c_char = ptr::null_mut();
-        let mut ext_privkey: *mut c_char = ptr::null_mut();
-        let mut is_multisig: bool = false;
-        let mut max_key_num: c_uint = 0;
-        let mut req_sig_num: c_uint = 0;
-        let error_code = unsafe {
-          CfdGetDescriptorData(
-            handle.as_handle(),
-            descriptor_handle,
-            index,
-            &mut max_index,
-            &mut depth,
-            &mut script_type,
-            &mut locking_script,
-            &mut address,
-            &mut hash_type,
-            &mut redeem_script,
-            &mut key_type,
-            &mut pubkey,
-            &mut ext_pubkey,
-            &mut ext_privkey,
-            &mut is_multisig,
-            &mut max_key_num,
-            &mut req_sig_num,
-          )
-        };
-        if error_code == 0 {
-          let locking_script_obj;
-          let address_obj;
-          let pubkey_obj;
-          let redeem_script_obj;
-          let ext_pubkey_obj;
-          let ext_privkey_obj;
-          unsafe {
-            locking_script_obj = collect_cstring_and_free(locking_script);
-            address_obj = collect_cstring_and_free(address);
-            pubkey_obj = collect_cstring_and_free(pubkey);
-            redeem_script_obj = collect_cstring_and_free(redeem_script);
-            ext_pubkey_obj = collect_cstring_and_free(ext_pubkey);
-            ext_privkey_obj = collect_cstring_and_free(ext_privkey);
-          }
-          if let Err(ret) = locking_script_obj {
-            result = Err(ret);
-            break;
-          } else if let Err(ret) = address_obj {
-            result = Err(ret);
-            break;
-          } else if let Err(ret) = pubkey_obj {
-            result = Err(ret);
-            break;
-          } else if let Err(ret) = redeem_script_obj {
-            result = Err(ret);
-            break;
-          } else if let Err(ret) = ext_pubkey_obj {
-            result = Err(ret);
-            break;
-          } else if let Err(ret) = ext_privkey_obj {
-            result = Err(ret);
-            break;
-          }
-          let addr_str = address_obj.unwrap();
-          let script_str = redeem_script_obj.unwrap();
-          let mut addr = Address::default();
-          let mut script = Script::default();
-          if !addr_str.is_empty() {
-            let addr_ret = Address::from_string(&addr_str);
-            if let Err(ret) = addr_ret {
-              result = Err(ret);
+          while index <= max_num {
+            let mut max_index: c_uint = 0;
+            let mut depth: c_uint = 0;
+            let mut script_type: c_int = 0;
+            let mut key_type: c_int = 0;
+            let mut hash_type: c_int = 0;
+            let mut locking_script: *mut c_char = ptr::null_mut();
+            let mut address: *mut c_char = ptr::null_mut();
+            let mut pubkey: *mut c_char = ptr::null_mut();
+            let mut redeem_script: *mut c_char = ptr::null_mut();
+            let mut ext_pubkey: *mut c_char = ptr::null_mut();
+            let mut ext_privkey: *mut c_char = ptr::null_mut();
+            let mut is_multisig: bool = false;
+            let mut max_key_num: c_uint = 0;
+            let mut req_sig_num: c_uint = 0;
+            let error_code = unsafe {
+              CfdGetDescriptorData(
+                handle.as_handle(),
+                descriptor_handle,
+                index,
+                &mut max_index,
+                &mut depth,
+                &mut script_type,
+                &mut locking_script,
+                &mut address,
+                &mut hash_type,
+                &mut redeem_script,
+                &mut key_type,
+                &mut pubkey,
+                &mut ext_pubkey,
+                &mut ext_privkey,
+                &mut is_multisig,
+                &mut max_key_num,
+                &mut req_sig_num,
+              )
+            };
+            if error_code != 0 {
+              result = Err(handle.get_error(error_code));
               break;
             }
-            addr = addr_ret.unwrap();
-          }
-          if !script_str.is_empty() {
-            let script_ret = Script::from_hex(&script_str);
-            if let Err(ret) = script_ret {
-              result = Err(ret);
-              break;
+            let str_list = unsafe {
+              collect_multi_cstring_and_free(&[
+                locking_script,
+                address,
+                pubkey,
+                redeem_script,
+                ext_pubkey,
+                ext_privkey,
+              ])
+            }?;
+            let addr_str = &str_list[1];
+            let pubkey_obj = &str_list[2];
+            let script_str = &str_list[3];
+            let ext_pubkey_obj = &str_list[4];
+            let ext_privkey_obj = &str_list[5];
+            let mut addr = Address::default();
+            let mut script = Script::default();
+            if !addr_str.is_empty() {
+              addr = Address::from_string(&addr_str)?;
             }
-            script = script_ret.unwrap();
-          }
-          let type_obj = DescriptorScriptType::from_c_value(script_type);
-          let hash_type_obj = HashType::from_c_value(hash_type);
-          let data: Result<DescriptorScriptData, CfdError> = match type_obj {
-            DescriptorScriptType::Combo
-            | DescriptorScriptType::Pk
-            | DescriptorScriptType::Pkh
-            | DescriptorScriptType::Wpkh => {
-              let key_data = Descriptor::collect_key_data(
-                key_type,
-                &pubkey_obj.unwrap(),
-                &ext_pubkey_obj.unwrap(),
-                &ext_privkey_obj.unwrap(),
-              );
-              if let Err(ret) = key_data {
-                Err(ret)
-              } else {
+            if !script_str.is_empty() {
+              script = Script::from_hex(&script_str)?;
+            }
+            let type_obj = DescriptorScriptType::from_c_value(script_type);
+            let hash_type_obj = HashType::from_c_value(hash_type);
+            let data = match type_obj {
+              DescriptorScriptType::Combo
+              | DescriptorScriptType::Pk
+              | DescriptorScriptType::Pkh
+              | DescriptorScriptType::Wpkh => {
+                let key_data = Descriptor::collect_key_data(
+                  key_type,
+                  &pubkey_obj,
+                  &ext_pubkey_obj,
+                  &ext_privkey_obj,
+                )?;
                 Ok(DescriptorScriptData::from_pubkey(
                   type_obj,
                   depth,
                   hash_type_obj,
                   addr,
-                  key_data.unwrap(),
+                  key_data,
                 ))
               }
-            }
-            DescriptorScriptType::Sh
-            | DescriptorScriptType::Wsh
-            | DescriptorScriptType::Multi
-            | DescriptorScriptType::SortedMulti => {
-              if is_multisig {
-                let key_list_obj =
-                  Descriptor::collect_multisig_data(&handle, descriptor_handle, max_key_num);
-                if let Err(ret) = key_list_obj {
-                  Err(ret)
-                } else {
+              DescriptorScriptType::Sh
+              | DescriptorScriptType::Wsh
+              | DescriptorScriptType::Multi
+              | DescriptorScriptType::SortedMulti => {
+                if is_multisig {
+                  let key_list_obj =
+                    Descriptor::collect_multisig_data(&handle, descriptor_handle, max_key_num)?;
                   Ok(DescriptorScriptData::from_multisig(
                     type_obj,
                     depth,
                     hash_type_obj,
                     addr,
                     script,
-                    &key_list_obj.unwrap(),
+                    &key_list_obj,
                     req_sig_num as u8,
                   ))
+                } else {
+                  Ok(DescriptorScriptData::from_script(
+                    type_obj,
+                    depth,
+                    hash_type_obj,
+                    addr,
+                    script,
+                  ))
                 }
-              } else {
-                Ok(DescriptorScriptData::from_script(
-                  type_obj,
-                  depth,
-                  hash_type_obj,
-                  addr,
-                  script,
-                ))
               }
-            }
-            DescriptorScriptType::Raw => Ok(DescriptorScriptData::from_raw_script(depth, &script)),
-            DescriptorScriptType::Addr => Ok(DescriptorScriptData::from_address(
-              depth,
-              &hash_type_obj,
-              &addr,
-            )),
-            _ => Ok(DescriptorScriptData::default()),
-          };
+              DescriptorScriptType::Raw => {
+                Ok(DescriptorScriptData::from_raw_script(depth, &script))
+              }
+              DescriptorScriptType::Addr => Ok(DescriptorScriptData::from_address(
+                depth,
+                &hash_type_obj,
+                &addr,
+              )),
+              _ => Ok(DescriptorScriptData::default()),
+            }?;
 
-          if let Err(ret) = data {
-            result = Err(ret);
-            break;
+            list.push(data);
+            index += 1;
           }
-          list.push(data.unwrap());
-        } else {
-          result = Err(handle.get_error(error_code));
-          break;
+          if list.len() == ((max_num + 1) as usize) {
+            result = Ok(Descriptor::analyze_list(descriptor, &list));
+          }
+          result
+        };
+        unsafe {
+          CfdFreeDescriptorHandle(handle.as_handle(), descriptor_handle);
         }
-        index += 1;
+        ret
       }
-      unsafe {
-        CfdFreeDescriptorHandle(handle.as_handle(), descriptor_handle);
-      }
-      if list.len() == ((max_num + 1) as usize) {
-        result = Ok(Descriptor::analyze_list(descriptor, &list));
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -709,12 +652,11 @@ impl Descriptor {
   }
 
   pub fn get_redeem_script(&self) -> Result<&Script, CfdError> {
-    if !self.has_script_hash() {
-      Err(CfdError::IllegalState(
+    match self.has_script_hash() {
+      false => Err(CfdError::IllegalState(
         "Not exist redeem script.".to_string(),
-      ))
-    } else {
-      Ok(&self.root_data.redeem_script)
+      )),
+      _ => Ok(&self.root_data.redeem_script),
     }
   }
 
@@ -732,10 +674,9 @@ impl Descriptor {
   }
 
   pub fn get_key_data(&self) -> Result<&KeyData, CfdError> {
-    if !self.has_key_hash() {
-      Err(CfdError::IllegalState("Not exist key data.".to_string()))
-    } else {
-      Ok(&self.root_data.key_data)
+    match self.has_key_hash() {
+      false => Err(CfdError::IllegalState("Not exist key data.".to_string())),
+      _ => Ok(&self.root_data.key_data),
     }
   }
 
@@ -744,27 +685,17 @@ impl Descriptor {
   }
 
   pub fn get_multisig_key_list(&self) -> Result<Vec<KeyData>, CfdError> {
-    if !self.has_multisig() {
-      Err(CfdError::IllegalState(
+    match self.has_multisig() {
+      false => Err(CfdError::IllegalState(
         "Not exist multisig data.".to_string(),
-      ))
-    } else {
-      Ok(self.root_data.multisig_key_list.to_vec())
+      )),
+      _ => Ok(self.root_data.multisig_key_list.to_vec()),
     }
   }
 
   fn append_checksum(descriptor: &str, network_type: &Network) -> Result<String, CfdError> {
-    let result: Result<String, CfdError>;
-    let descriptor_obj = CString::new(descriptor.to_string());
-    if descriptor_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let descriptor_str = descriptor_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let descriptor_str = alloc_c_string(descriptor)?;
+    let handle = ErrorHandle::new()?;
     let mut desc_added_checksum: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdGetDescriptorChecksum(
@@ -774,16 +705,10 @@ impl Descriptor {
         &mut desc_added_checksum,
       )
     };
-    if error_code == 0 {
-      let added_checksum = unsafe { collect_cstring_and_free(desc_added_checksum) };
-      if let Err(ret) = added_checksum {
-        result = Err(ret);
-      } else {
-        result = Ok(added_checksum.unwrap());
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => unsafe { collect_cstring_and_free(desc_added_checksum) },
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -797,28 +722,16 @@ impl Descriptor {
     let key_type_obj = DescriptorKeyType::from_c_value(key_type);
     match key_type_obj {
       DescriptorKeyType::Public => {
-        let pubkey_obj = Pubkey::from_str(pubkey);
-        if let Err(ret) = pubkey_obj {
-          Err(ret)
-        } else {
-          Ok(KeyData::from_pubkey(&pubkey_obj.unwrap()))
-        }
+        let pubkey_obj = Pubkey::from_str(pubkey)?;
+        Ok(KeyData::from_pubkey(&pubkey_obj))
       }
       DescriptorKeyType::Bip32 => {
-        let ext_key_obj = ExtPubkey::from_str(ext_pubkey);
-        if let Err(ret) = ext_key_obj {
-          Err(ret)
-        } else {
-          Ok(KeyData::from_ext_pubkey(&ext_key_obj.unwrap()))
-        }
+        let ext_key_obj = ExtPubkey::from_str(ext_pubkey)?;
+        Ok(KeyData::from_ext_pubkey(&ext_key_obj))
       }
       DescriptorKeyType::Bip32Priv => {
-        let ext_key_obj = ExtPrivkey::from_str(ext_privkey);
-        if let Err(ret) = ext_key_obj {
-          Err(ret)
-        } else {
-          Ok(KeyData::from_ext_privkey(&ext_key_obj.unwrap()))
-        }
+        let ext_key_obj = ExtPrivkey::from_str(ext_privkey)?;
+        Ok(KeyData::from_ext_privkey(&ext_key_obj))
       }
       _ => Err(CfdError::Internal("invalid key type status.".to_string())),
     }
@@ -837,52 +750,35 @@ impl Descriptor {
     let mut index = 0;
 
     while index < key_num {
-      let mut key_type: c_int = 0;
-      let mut pubkey: *mut c_char = ptr::null_mut();
-      let mut ext_pubkey: *mut c_char = ptr::null_mut();
-      let mut ext_privkey: *mut c_char = ptr::null_mut();
-      let error_code = unsafe {
-        CfdGetDescriptorMultisigKey(
-          handle.as_handle(),
-          descriptor_handle,
-          index,
-          &mut key_type,
-          &mut pubkey,
-          &mut ext_pubkey,
-          &mut ext_privkey,
-        )
-      };
-      if error_code == 0 {
-        let pubkey_obj;
-        let ext_pubkey_obj;
-        let ext_privkey_obj;
-        unsafe {
-          pubkey_obj = collect_cstring_and_free(pubkey);
-          ext_pubkey_obj = collect_cstring_and_free(ext_pubkey);
-          ext_privkey_obj = collect_cstring_and_free(ext_privkey);
+      let key_data = {
+        let mut key_type: c_int = 0;
+        let mut pubkey: *mut c_char = ptr::null_mut();
+        let mut ext_pubkey: *mut c_char = ptr::null_mut();
+        let mut ext_privkey: *mut c_char = ptr::null_mut();
+        let error_code = unsafe {
+          CfdGetDescriptorMultisigKey(
+            handle.as_handle(),
+            descriptor_handle,
+            index,
+            &mut key_type,
+            &mut pubkey,
+            &mut ext_pubkey,
+            &mut ext_privkey,
+          )
+        };
+        if error_code != 0 {
+          Err(handle.get_error(error_code))
+        } else {
+          let str_list =
+            unsafe { collect_multi_cstring_and_free(&[pubkey, ext_pubkey, ext_privkey]) }?;
+
+          let pubkey_obj = &str_list[0];
+          let ext_pubkey_obj = &str_list[1];
+          let ext_privkey_obj = &str_list[2];
+          Descriptor::collect_key_data(key_type, pubkey_obj, ext_pubkey_obj, ext_privkey_obj)
         }
-        if let Err(ret) = pubkey_obj {
-          result = Err(ret);
-          break;
-        } else if let Err(ret) = ext_pubkey_obj {
-          result = Err(ret);
-          break;
-        } else if let Err(ret) = ext_privkey_obj {
-          result = Err(ret);
-          break;
-        }
-        let key_data = Descriptor::collect_key_data(
-          key_type,
-          &pubkey_obj.unwrap(),
-          &ext_pubkey_obj.unwrap(),
-          &ext_privkey_obj.unwrap(),
-        );
-        if let Err(ret) = key_data {
-          result = Err(ret);
-          break;
-        }
-        list.push(key_data.unwrap());
-      }
+      }?;
+      list.push(key_data);
       index += 1;
     }
     if list.len() == (key_num as usize) {

@@ -5,8 +5,8 @@ extern crate libc;
 use self::libc::{c_char, c_uint, c_void};
 use crate::address::{Address, HashType};
 use crate::common::{
-  byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free, hex_from_bytes, Amount, ByteData,
-  CfdError, ErrorHandle, Network,
+  alloc_c_string, byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free,
+  collect_multi_cstring_and_free, hex_from_bytes, Amount, ByteData, CfdError, ErrorHandle, Network,
 };
 use crate::descriptor::Descriptor;
 use crate::key::{KeyPair, Privkey, Pubkey, SigHashType, SignParameter};
@@ -58,11 +58,7 @@ impl Txid {
 impl FromStr for Txid {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<Txid, CfdError> {
-    let result = byte_from_hex(text);
-    if let Err(e) = result {
-      return Err(e);
-    }
-    let bytes = result.unwrap();
+    let bytes = byte_from_hex(text)?;
     if bytes.len() != TXID_SIZE {
       Err(CfdError::IllegalArgument(
         "invalid txid length.".to_string(),
@@ -109,15 +105,8 @@ impl OutPoint {
   }
 
   pub fn from_str(txid: &str, vout: u32) -> Result<OutPoint, CfdError> {
-    let txid_obj = Txid::from_str(txid);
-    if let Err(e) = txid_obj {
-      Err(e)
-    } else {
-      Ok(OutPoint {
-        txid: txid_obj.unwrap(),
-        vout,
-      })
-    }
+    let txid = Txid::from_str(txid)?;
+    Ok(OutPoint { txid, vout })
   }
 
   #[inline]
@@ -159,10 +148,9 @@ impl ScriptWitness {
   }
 
   pub fn get_stack(&self, index: u32) -> Result<&ByteData, CfdError> {
-    if self.witness_stack.len() <= index as usize {
-      Err(CfdError::IllegalArgument("invalid index.".to_string()))
-    } else {
-      Ok(&self.witness_stack[index as usize])
+    match self.witness_stack.len() <= index as usize {
+      true => Err(CfdError::IllegalArgument("invalid index.".to_string())),
+      _ => Ok(&self.witness_stack[index as usize]),
     }
   }
 
@@ -177,20 +165,14 @@ impl ScriptWitness {
 
 impl fmt::Display for ScriptWitness {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let mut ret = write!(f, "stack({})[", &self.len());
-    if let Err(e) = ret {
-      return Err(e);
-    }
+    write!(f, "stack({})[", &self.len())?;
 
     let mut index = 0;
     while index < self.len() {
       if index == 0 {
-        ret = write!(f, "{}", &self.witness_stack[index]);
+        write!(f, "{}", &self.witness_stack[index])?;
       } else {
-        ret = write!(f, ", {}", &self.witness_stack[index]);
-      }
-      if let Err(e) = ret {
-        return Err(e);
+        write!(f, ", {}", &self.witness_stack[index])?;
       }
       index += 1;
     }
@@ -432,18 +414,11 @@ impl Transaction {
     txout_list: &[TxOutData],
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
-    let tx = ope.create(version, locktime, txin_list, txout_list);
-    if let Err(e) = tx {
-      return Err(e);
-    }
-    let tx_byte = tx.unwrap();
-    let data = ope.get_tx_data(ope.get_last_tx());
-    if let Err(e) = data {
-      return Err(e);
-    }
+    let tx = ope.create(version, locktime, txin_list, txout_list)?;
+    let data = ope.get_tx_data(ope.get_last_tx())?;
     Ok(Transaction {
-      tx: tx_byte,
-      data: data.unwrap(),
+      tx,
+      data,
       txin_list: TxIn::from_data_list(txin_list),
       txout_list: TxOut::from_data_list(txout_list),
     })
@@ -455,20 +430,13 @@ impl Transaction {
     txout_list: &[TxOutData],
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
-    let tx = ope.update(&hex_from_bytes(&self.tx), txin_list, txout_list);
-    if let Err(e) = tx {
-      return Err(e);
-    }
-    let tx_byte = tx.unwrap();
+    let tx = ope.update(&hex_from_bytes(&self.tx), txin_list, txout_list)?;
     let last_tx = ope.get_last_tx();
     let mut ope2 = ope.clone();
-    let data = ope2.get_all_data(last_tx);
-    if let Err(e) = data {
-      return Err(e);
-    }
+    let data = ope2.get_all_data(last_tx)?;
     Ok(Transaction {
-      tx: tx_byte,
-      data: data.unwrap(),
+      tx,
+      data,
       txin_list: ope2.get_txin_list_cache().to_vec(),
       txout_list: ope2.get_txout_list_cache().to_vec(),
     })
@@ -476,13 +444,9 @@ impl Transaction {
 
   pub fn update_amount(&self, index: u32, amount: i64) -> Result<Transaction, CfdError> {
     let ope = TransactionOperation::new(&Network::Mainnet);
-    let tx = ope.update_output_amount(&hex_from_bytes(&self.tx), index, amount);
-    if let Err(e) = tx {
-      return Err(e);
-    }
-    let tx_byte = tx.unwrap();
+    let tx = ope.update_output_amount(&hex_from_bytes(&self.tx), index, amount)?;
     let mut tx_obj = Transaction {
-      tx: tx_byte,
+      tx,
       data: self.data.clone(),
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
@@ -555,28 +519,17 @@ impl Transaction {
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index_ret = ope.get_txin_index_by_outpoint(&tx_hex, outpoint);
-    if let Err(e) = index_ret {
-      return Err(e);
-    }
-    let index = index_ret.unwrap();
-    let tx = ope.add_pubkey_hash_sign(&tx_hex, outpoint, hash_type, pubkey, signature);
-    if let Err(e) = tx {
-      return Err(e);
-    }
-    let tx_byte = tx.unwrap();
+    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
+    let tx = ope.add_pubkey_hash_sign(&tx_hex, outpoint, hash_type, pubkey, signature)?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index);
-    if let Err(e) = new_txin {
-      return Err(e);
-    }
+    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
     let mut tx_obj = Transaction {
-      tx: tx_byte,
+      tx,
       data: self.data.clone(),
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
-    tx_obj.txin_list[index as usize] = new_txin.unwrap();
+    tx_obj.txin_list[index as usize] = new_txin;
     Ok(tx_obj)
   }
 
@@ -590,34 +543,20 @@ impl Transaction {
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index_ret = ope.get_txin_index_by_outpoint(&tx_hex, outpoint);
-    if let Err(e) = index_ret {
-      return Err(e);
-    }
-    let index = index_ret.unwrap();
-    let pubkey_result = privkey.get_pubkey();
-    if let Err(e) = pubkey_result {
-      return Err(e);
-    }
-    let key = KeyPair::new(privkey, &pubkey_result.unwrap());
+    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
+    let pubkey = privkey.get_pubkey()?;
+    let key = KeyPair::new(privkey, &pubkey);
     let option = SigHashOption::new(*sighash_type, amount.as_satoshi_amount());
-    let tx = ope.sign_with_privkey(&tx_hex, outpoint, hash_type, &key, &option, true);
-    if let Err(e) = tx {
-      return Err(e);
-    }
-    let tx_byte = tx.unwrap();
+    let tx = ope.sign_with_privkey(&tx_hex, outpoint, hash_type, &key, &option, true)?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index);
-    if let Err(e) = new_txin {
-      return Err(e);
-    }
+    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
     let mut tx_obj = Transaction {
-      tx: tx_byte,
+      tx,
       data: self.data.clone(),
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
-    tx_obj.txin_list[index as usize] = new_txin.unwrap();
+    tx_obj.txin_list[index as usize] = new_txin;
     Ok(tx_obj)
   }
 
@@ -635,28 +574,17 @@ impl Transaction {
     }
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index_ret = ope.get_txin_index_by_outpoint(&tx_hex, outpoint);
-    if let Err(e) = index_ret {
-      return Err(e);
-    }
-    let index = index_ret.unwrap();
-    let tx = ope.add_multisig_sign(&tx_hex, outpoint, hash_type, redeem_script, signature_list);
-    if let Err(e) = tx {
-      return Err(e);
-    }
-    let tx_byte = tx.unwrap();
+    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
+    let tx = ope.add_multisig_sign(&tx_hex, outpoint, hash_type, redeem_script, signature_list)?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index);
-    if let Err(e) = new_txin {
-      return Err(e);
-    }
+    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
     let mut tx_obj = Transaction {
-      tx: tx_byte,
+      tx,
       data: self.data.clone(),
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
-    tx_obj.txin_list[index as usize] = new_txin.unwrap();
+    tx_obj.txin_list[index as usize] = new_txin;
     Ok(tx_obj)
   }
 
@@ -669,30 +597,20 @@ impl Transaction {
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index_ret = ope.get_txin_index_by_outpoint(&tx_hex, outpoint);
-    if let Err(e) = index_ret {
-      return Err(e);
-    }
-    let index = index_ret.unwrap();
-    let tx = ope.add_sign(&tx_hex, outpoint, hash_type, sign_data, clear_stack);
-    if let Err(e) = tx {
-      return Err(e);
-    }
-    let tx_byte = tx.unwrap();
+    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
+    let tx = ope.add_sign(&tx_hex, outpoint, hash_type, sign_data, clear_stack)?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index);
-    if let Err(e) = new_txin {
-      return Err(e);
-    }
+    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
     let mut tx_obj = Transaction {
-      tx: tx_byte,
+      tx,
       data: self.data.clone(),
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
-    tx_obj.txin_list[index as usize] = new_txin.unwrap();
+    tx_obj.txin_list[index as usize] = new_txin;
     Ok(tx_obj)
   }
+
   pub fn add_script_hash_sign(
     &self,
     outpoint: &OutPoint,
@@ -702,28 +620,17 @@ impl Transaction {
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index_ret = ope.get_txin_index_by_outpoint(&tx_hex, outpoint);
-    if let Err(e) = index_ret {
-      return Err(e);
-    }
-    let index = index_ret.unwrap();
-    let tx = ope.add_script_hash_sign(&tx_hex, outpoint, hash_type, redeem_script, clear_stack);
-    if let Err(e) = tx {
-      return Err(e);
-    }
-    let tx_byte = tx.unwrap();
+    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
+    let tx = ope.add_script_hash_sign(&tx_hex, outpoint, hash_type, redeem_script, clear_stack)?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index);
-    if let Err(e) = new_txin {
-      return Err(e);
-    }
+    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
     let mut tx_obj = Transaction {
-      tx: tx_byte,
+      tx,
       data: self.data.clone(),
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
-    tx_obj.txin_list[index as usize] = new_txin.unwrap();
+    tx_obj.txin_list[index as usize] = new_txin;
     Ok(tx_obj)
   }
 
@@ -774,7 +681,7 @@ impl Transaction {
     outpoint: &OutPoint,
     address: &Address,
     amount: &Amount,
-  ) -> Result<bool, CfdError> {
+  ) -> Result<(), CfdError> {
     let ope = TransactionOperation::new(&Network::Mainnet);
     let option = SigHashOption::from_amount(amount.as_satoshi_amount());
     ope.verify_sign(
@@ -791,7 +698,7 @@ impl Transaction {
     outpoint: &OutPoint,
     locking_script: &Script,
     amount: &Amount,
-  ) -> Result<bool, CfdError> {
+  ) -> Result<(), CfdError> {
     let ope = TransactionOperation::new(&Network::Mainnet);
     let option = SigHashOption::from_amount(amount.as_satoshi_amount());
     ope.verify_sign(
@@ -808,20 +715,13 @@ impl FromStr for Transaction {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
-    let tx = ope.update(text, &[], &[]);
-    if let Err(e) = tx {
-      return Err(e);
-    }
-    let tx_byte = tx.unwrap();
+    let tx = ope.update(text, &[], &[])?;
     let last_tx = ope.get_last_tx();
     let mut ope2 = ope.clone();
-    let data = ope2.get_all_data(last_tx);
-    if let Err(e) = data {
-      return Err(e);
-    }
+    let data = ope2.get_all_data(last_tx)?;
     Ok(Transaction {
-      tx: tx_byte,
-      data: data.unwrap(),
+      tx,
+      data,
       txin_list: ope2.get_txin_list_cache().to_vec(),
       txout_list: ope2.get_txout_list_cache().to_vec(),
     })
@@ -830,16 +730,14 @@ impl FromStr for Transaction {
 
 impl Default for Transaction {
   fn default() -> Transaction {
-    let result = Transaction::new(2, 0);
-    if let Ok(ret) = result {
-      ret
-    } else {
-      Transaction {
+    match Transaction::new(2, 0) {
+      Ok(tx) => tx,
+      _ => Transaction {
         tx: [2, 0, 0, 0, 0, 0, 0, 0, 0, 0].to_vec(),
         data: TxData::default(),
         txin_list: vec![],
         txout_list: vec![],
-      }
+      },
     }
   }
 }
@@ -941,17 +839,8 @@ impl TransactionOperation {
     index: u32,
     amount: i64,
   ) -> Result<Vec<u8>, CfdError> {
-    let result: Result<Vec<u8>, CfdError>;
-    let tx_obj = CString::new(tx);
-    if tx_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdUpdateTxOutAmount(
@@ -963,46 +852,29 @@ impl TransactionOperation {
         &mut output,
       )
     };
-    if error_code == 0 {
-      let output_obj = unsafe { collect_cstring_and_free(output) };
-      if let Err(ret) = output_obj {
-        result = Err(ret);
-      } else {
-        let output_byte = byte_from_hex_unsafe(&output_obj.unwrap());
-        result = Ok(output_byte);
+    let result = match error_code {
+      0 => {
+        let output_obj = unsafe { collect_cstring_and_free(output) }?;
+        Ok(byte_from_hex_unsafe(&output_obj))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
 
   pub fn get_all_data(&mut self, tx: &str) -> Result<TxData, CfdError> {
-    let data = self.get_tx_data(tx);
-    if let Err(e) = data {
-      return Err(e);
-    }
-    let in_count = self.get_count(tx, true);
-    let out_count = self.get_count(tx, false);
-    if let Err(e) = in_count {
-      return Err(e);
-    } else if let Err(e) = out_count {
-      return Err(e);
-    }
-    let in_indexes = TransactionOperation::create_index_list(in_count.unwrap());
-    let out_indexes = TransactionOperation::create_index_list(out_count.unwrap());
+    let data = self.get_tx_data(tx)?;
+    let in_count = self.get_count(tx, true)?;
+    let out_count = self.get_count(tx, false)?;
+    let in_indexes = TransactionOperation::create_index_list(in_count);
+    let out_indexes = TransactionOperation::create_index_list(out_count);
 
-    let in_data = self.get_tx_input_list(tx, &in_indexes);
-    let out_data = self.get_tx_output_list(tx, &out_indexes);
-    if let Err(e) = in_data {
-      return Err(e);
-    } else if let Err(e) = out_data {
-      return Err(e);
-    }
-    self.txin_list = in_data.unwrap();
-    self.txout_list = out_data.unwrap();
-    Ok(data.unwrap())
+    let in_data = self.get_tx_input_list(tx, &in_indexes)?;
+    let out_data = self.get_tx_output_list(tx, &out_indexes)?;
+    self.txin_list = in_data;
+    self.txout_list = out_data;
+    Ok(data)
   }
 
   fn create_index_list(index_count: u32) -> Vec<u32> {
@@ -1027,17 +899,8 @@ impl TransactionOperation {
   }
 
   pub fn get_tx_data(&self, tx: &str) -> Result<TxData, CfdError> {
-    let result: Result<TxData, CfdError>;
-    let tx_obj = CString::new(tx);
-    if tx_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let handle = ErrorHandle::new()?;
     let mut data: TxData = TxData::default();
     let mut txid: *mut c_char = ptr::null_mut();
     let mut wtxid: *mut c_char = ptr::null_mut();
@@ -1055,126 +918,79 @@ impl TransactionOperation {
         &mut data.locktime,
       )
     };
-    if error_code == 0 {
-      let txid_obj;
-      let wtxid_obj;
-      unsafe {
-        txid_obj = collect_cstring_and_free(txid);
-        wtxid_obj = collect_cstring_and_free(wtxid);
+    let result = match error_code {
+      0 => {
+        let str_list = unsafe { collect_multi_cstring_and_free(&[txid, wtxid]) }?;
+        let txid_ret = Txid::from_str(&str_list[0])?;
+        let wtxid_ret = Txid::from_str(&str_list[1])?;
+        data.txid = txid_ret;
+        data.wtxid = wtxid_ret;
+        Ok(data)
       }
-      if let Err(ret) = txid_obj {
-        result = Err(ret);
-      } else if let Err(ret) = wtxid_obj {
-        result = Err(ret);
-      } else {
-        let txid_ret = Txid::from_str(&txid_obj.unwrap());
-        let wtxid_ret = Txid::from_str(&wtxid_obj.unwrap());
-        if let Err(ret) = txid_ret {
-          result = Err(ret);
-        } else if let Err(ret) = wtxid_ret {
-          result = Err(ret);
-        } else {
-          data.txid = txid_ret.unwrap();
-          data.wtxid = wtxid_ret.unwrap();
-          result = Ok(data);
-        }
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
 
   pub fn get_tx_input(&self, tx: &str, index: u32) -> Result<TxIn, CfdError> {
     let indexes = vec![index];
-    let result = self.get_tx_input_list(tx, &indexes);
-    if let Err(e) = result {
-      Err(e)
+    let list = self.get_tx_input_list(tx, &indexes)?;
+    if list.is_empty() {
+      Err(CfdError::Internal("Failed to empty list.".to_string()))
     } else {
-      let list = result.unwrap();
-      if list.is_empty() {
-        Err(CfdError::Internal("Failed to empty list.".to_string()))
-      } else {
-        Ok(list[0].clone())
-      }
+      Ok(list[0].clone())
     }
   }
 
   pub fn get_tx_input_list(&self, tx: &str, indexes: &[u32]) -> Result<Vec<TxIn>, CfdError> {
-    let mut result: Result<Vec<TxIn>, CfdError> = Err(CfdError::Unknown(
-      "Failed to get_tx_input_list.".to_string(),
-    ));
-    let tx_obj = CString::new(tx);
-    if tx_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let handle = ErrorHandle::new()?;
     let mut list: Vec<TxIn> = vec![];
     list.reserve(indexes.len());
 
-    for index in indexes {
-      let mut data: TxIn = TxIn::default();
-      let mut txid: *mut c_char = ptr::null_mut();
-      let mut script_sig: *mut c_char = ptr::null_mut();
-      let error_code = unsafe {
-        CfdGetTxIn(
-          handle.as_handle(),
-          self.network.to_c_value(),
-          tx_str.as_ptr(),
-          *index,
-          &mut txid,
-          &mut data.outpoint.vout,
-          &mut data.sequence,
-          &mut script_sig,
-        )
-      };
-      if error_code == 0 {
-        let txid_obj;
-        let script_sig_obj;
-        unsafe {
-          txid_obj = collect_cstring_and_free(txid);
-          script_sig_obj = collect_cstring_and_free(script_sig);
-        }
-        if let Err(ret) = txid_obj {
-          result = Err(ret);
-          break;
-        } else if let Err(ret) = script_sig_obj {
-          result = Err(ret);
-          break;
-        } else {
-          let txid_ret = Txid::from_str(&txid_obj.unwrap());
-          let script_ret = Script::from_hex(&script_sig_obj.unwrap());
-          let script_witness = self.get_tx_input_witness(&handle, &tx_str, *index);
-          if let Err(e) = script_witness {
-            result = Err(e);
-            break;
-          } else if let Err(ret) = txid_ret {
-            result = Err(ret);
-            break;
-          } else if let Err(ret) = script_ret {
-            result = Err(ret);
-            break;
-          } else {
-            data.outpoint.txid = txid_ret.unwrap();
-            data.script_sig = script_ret.unwrap();
-            data.script_witness = script_witness.unwrap();
-            list.push(data);
+    let result = {
+      for index in indexes {
+        let item = {
+          let mut data: TxIn = TxIn::default();
+          let mut txid: *mut c_char = ptr::null_mut();
+          let mut script_sig: *mut c_char = ptr::null_mut();
+          let error_code = unsafe {
+            CfdGetTxIn(
+              handle.as_handle(),
+              self.network.to_c_value(),
+              tx_str.as_ptr(),
+              *index,
+              &mut txid,
+              &mut data.outpoint.vout,
+              &mut data.sequence,
+              &mut script_sig,
+            )
+          };
+          match error_code {
+            0 => {
+              let str_list = unsafe { collect_multi_cstring_and_free(&[txid, script_sig]) }?;
+              let txid_ret = Txid::from_str(&str_list[0])?;
+              let script_ret = Script::from_hex(&str_list[1])?;
+              let script_witness = self.get_tx_input_witness(&handle, &tx_str, *index)?;
+              data.outpoint.txid = txid_ret;
+              data.script_sig = script_ret;
+              data.script_witness = script_witness;
+              Ok(data)
+            }
+            _ => Err(handle.get_error(error_code)),
           }
-        }
-      } else {
-        result = Err(handle.get_error(error_code));
-        break;
+        }?;
+        list.push(item);
       }
-    }
-    if list.len() == indexes.len() {
-      result = Ok(list);
-    }
+      if list.len() == indexes.len() {
+        Ok(list)
+      } else {
+        Err(CfdError::Unknown(
+          "Failed to get_tx_input_list.".to_string(),
+        ))
+      }
+    };
     handle.free_handle();
     result
   }
@@ -1197,74 +1013,52 @@ impl TransactionOperation {
   */
 
   pub fn get_tx_output_list(&self, tx: &str, indexes: &[u32]) -> Result<Vec<TxOut>, CfdError> {
-    let mut result: Result<Vec<TxOut>, CfdError> = Err(CfdError::Unknown(
-      "Failed to get_tx_output_list.".to_string(),
-    ));
-    let tx_obj = CString::new(tx);
-    if tx_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let handle = ErrorHandle::new()?;
     let mut list: Vec<TxOut> = vec![];
     list.reserve(indexes.len());
 
-    for index in indexes {
-      let mut data: TxOut = TxOut::default();
-      let mut locking_script: *mut c_char = ptr::null_mut();
-      let error_code = unsafe {
-        CfdGetTxOut(
-          handle.as_handle(),
-          self.network.to_c_value(),
-          tx_str.as_ptr(),
-          *index,
-          &mut data.amount,
-          &mut locking_script,
-        )
-      };
-      if error_code == 0 {
-        let script_obj = unsafe { collect_cstring_and_free(locking_script) };
-        if let Err(e) = script_obj {
-          result = Err(e);
-          break;
-        } else {
-          let script_ret = Script::from_hex(&script_obj.unwrap());
-          if let Err(e) = script_ret {
-            result = Err(e);
-            break;
-          } else {
-            data.locking_script = script_ret.unwrap();
-            list.push(data);
+    let result = {
+      for index in indexes {
+        let item = {
+          let mut data: TxOut = TxOut::default();
+          let mut locking_script: *mut c_char = ptr::null_mut();
+          let error_code = unsafe {
+            CfdGetTxOut(
+              handle.as_handle(),
+              self.network.to_c_value(),
+              tx_str.as_ptr(),
+              *index,
+              &mut data.amount,
+              &mut locking_script,
+            )
+          };
+          match error_code {
+            0 => {
+              let script_obj = unsafe { collect_cstring_and_free(locking_script) }?;
+              data.locking_script = Script::from_hex(&script_obj)?;
+              Ok(data)
+            }
+            _ => Err(handle.get_error(error_code)),
           }
-        }
-      } else {
-        result = Err(handle.get_error(error_code));
-        break;
+        }?;
+        list.push(item);
       }
-    }
-    if list.len() == indexes.len() {
-      result = Ok(list);
-    }
+      if list.len() == indexes.len() {
+        Ok(list)
+      } else {
+        Err(CfdError::Unknown(
+          "Failed to get_tx_output_list.".to_string(),
+        ))
+      }
+    };
     handle.free_handle();
     result
   }
 
   pub fn get_count(&self, tx: &str, is_target_input: bool) -> Result<u32, CfdError> {
-    let result: Result<u32, CfdError>;
-    let tx_obj = CString::new(tx);
-    if tx_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let handle = ErrorHandle::new()?;
     let mut count: c_uint = 0;
     let error_code = unsafe {
       if is_target_input {
@@ -1283,29 +1077,18 @@ impl TransactionOperation {
         )
       }
     };
-    if error_code == 0 {
-      result = Ok(count);
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => Ok(count),
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
 
   pub fn get_txin_index_by_outpoint(&self, tx: &str, outpoint: &OutPoint) -> Result<u32, CfdError> {
-    let result: Result<u32, CfdError>;
-    let tx_obj = CString::new(tx);
-    let txid_obj = CString::new(outpoint.txid.to_hex());
-    if tx_obj.is_err() || txid_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let txid = txid_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut index: c_uint = 0;
     let error_code = unsafe {
       CfdGetTxInIndex(
@@ -1317,11 +1100,10 @@ impl TransactionOperation {
         &mut index,
       )
     };
-    if error_code == 0 {
-      result = Ok(index);
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => Ok(index),
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1347,25 +1129,13 @@ impl TransactionOperation {
     redeem_script: &Script,
     option: &SigHashOption,
   ) -> Result<Vec<u8>, CfdError> {
-    let result: Result<Vec<u8>, CfdError>;
-    let tx_obj = CString::new(tx);
-    let txid_obj = CString::new(outpoint.txid.to_hex());
-    let pubkey_obj = CString::new(pubkey.to_hex());
-    let script_obj = CString::new(redeem_script.to_hex());
-    if tx_obj.is_err() || txid_obj.is_err() || pubkey_obj.is_err() || script_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let txid = txid_obj.unwrap();
-    let pubkey_str = pubkey_obj.unwrap();
-    let script_str = script_obj.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+    let pubkey_str = alloc_c_string(&pubkey.to_hex())?;
+    let script_str = alloc_c_string(&redeem_script.to_hex())?;
     let amount = option.amount;
     let sighash_type = option.sighash_type;
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateSighash(
@@ -1383,17 +1153,13 @@ impl TransactionOperation {
         &mut output,
       )
     };
-    if error_code == 0 {
-      let output_obj = unsafe { collect_cstring_and_free(output) };
-      if let Err(ret) = output_obj {
-        result = Err(ret);
-      } else {
-        let output_byte = byte_from_hex_unsafe(&output_obj.unwrap());
-        result = Ok(output_byte);
+    let result = match error_code {
+      0 => {
+        let output_obj = unsafe { collect_cstring_and_free(output) }?;
+        Ok(byte_from_hex_unsafe(&output_obj))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1406,22 +1172,11 @@ impl TransactionOperation {
     sign_data: &SignParameter,
     clear_stack: bool,
   ) -> Result<Vec<u8>, CfdError> {
-    let result: Result<Vec<u8>, CfdError>;
-    let tx_obj = CString::new(tx);
-    let txid_obj = CString::new(outpoint.txid.to_hex());
-    let sign_data_obj = CString::new(sign_data.to_hex());
-    if tx_obj.is_err() || txid_obj.is_err() || sign_data_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let txid = txid_obj.unwrap();
-    let sign_data_hex = sign_data_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
+    let tx_str = alloc_c_string(tx)?;
+    let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+    let sign_data_hex = alloc_c_string(&sign_data.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let sighash_type = sign_data.get_sighash_type();
-    let handle = err_handle.unwrap();
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdAddTxSign(
@@ -1439,18 +1194,14 @@ impl TransactionOperation {
         &mut output,
       )
     };
-    if error_code == 0 {
-      let output_obj = unsafe { collect_cstring_and_free(output) };
-      if let Err(ret) = output_obj {
-        result = Err(ret);
-      } else {
-        self.last_tx = output_obj.unwrap();
-        let output_byte = byte_from_hex_unsafe(&self.last_tx);
-        result = Ok(output_byte);
+    let result = match error_code {
+      0 => {
+        let output_obj = unsafe { collect_cstring_and_free(output) }?;
+        self.last_tx = output_obj;
+        Ok(byte_from_hex_unsafe(&self.last_tx))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1463,24 +1214,12 @@ impl TransactionOperation {
     pubkey: &Pubkey,
     signature: &SignParameter,
   ) -> Result<Vec<u8>, CfdError> {
-    let result: Result<Vec<u8>, CfdError>;
-    let tx_obj = CString::new(tx);
-    let txid_obj = CString::new(outpoint.txid.to_hex());
-    let pubkey_obj = CString::new(pubkey.to_hex());
-    let signature_obj = CString::new(signature.to_hex());
-    if tx_obj.is_err() || txid_obj.is_err() || pubkey_obj.is_err() || signature_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let txid = txid_obj.unwrap();
-    let pubkey_hex = pubkey_obj.unwrap();
-    let signature_hex = signature_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
+    let tx_str = alloc_c_string(tx)?;
+    let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+    let pubkey_hex = alloc_c_string(&pubkey.to_hex())?;
+    let signature_hex = alloc_c_string(&signature.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let sighash_type = signature.get_sighash_type();
-    let handle = err_handle.unwrap();
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdAddPubkeyHashSign(
@@ -1498,18 +1237,14 @@ impl TransactionOperation {
         &mut output,
       )
     };
-    if error_code == 0 {
-      let output_obj = unsafe { collect_cstring_and_free(output) };
-      if let Err(ret) = output_obj {
-        result = Err(ret);
-      } else {
-        self.last_tx = output_obj.unwrap();
-        let output_byte = byte_from_hex_unsafe(&self.last_tx);
-        result = Ok(output_byte);
+    let result = match error_code {
+      0 => {
+        let output_obj = unsafe { collect_cstring_and_free(output) }?;
+        self.last_tx = output_obj;
+        Ok(byte_from_hex_unsafe(&self.last_tx))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1522,21 +1257,10 @@ impl TransactionOperation {
     redeem_script: &Script,
     clear_stack: bool,
   ) -> Result<Vec<u8>, CfdError> {
-    let result: Result<Vec<u8>, CfdError>;
-    let tx_obj = CString::new(tx);
-    let txid_obj = CString::new(outpoint.txid.to_hex());
-    let script_obj = CString::new(redeem_script.to_hex());
-    if tx_obj.is_err() || txid_obj.is_err() || script_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let txid = txid_obj.unwrap();
-    let script_hex = script_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+    let script_hex = alloc_c_string(&redeem_script.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdAddScriptHashSign(
@@ -1551,18 +1275,14 @@ impl TransactionOperation {
         &mut output,
       )
     };
-    if error_code == 0 {
-      let output_obj = unsafe { collect_cstring_and_free(output) };
-      if let Err(ret) = output_obj {
-        result = Err(ret);
-      } else {
-        self.last_tx = output_obj.unwrap();
-        let output_byte = byte_from_hex_unsafe(&self.last_tx);
-        result = Ok(output_byte);
+    let result = match error_code {
+      0 => {
+        let output_obj = unsafe { collect_cstring_and_free(output) }?;
+        self.last_tx = output_obj;
+        Ok(byte_from_hex_unsafe(&self.last_tx))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1576,24 +1296,12 @@ impl TransactionOperation {
     option: &SigHashOption,
     has_grind_r: bool,
   ) -> Result<Vec<u8>, CfdError> {
-    let result: Result<Vec<u8>, CfdError>;
-    let tx_obj = CString::new(tx);
-    let txid_obj = CString::new(outpoint.txid.to_hex());
-    let pubkey_obj = CString::new(key.to_pubkey().to_hex());
-    let privkey_obj = CString::new(key.to_privkey().to_hex());
-    if tx_obj.is_err() || txid_obj.is_err() || pubkey_obj.is_err() || privkey_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let txid = txid_obj.unwrap();
-    let pubkey_hex = pubkey_obj.unwrap();
-    let privkey_hex = privkey_obj.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+    let pubkey_hex = alloc_c_string(&key.to_pubkey().to_hex())?;
+    let privkey_hex = alloc_c_string(&key.to_privkey().to_hex())?;
+    let handle = ErrorHandle::new()?;
     let sighash_type = option.sighash_type;
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdAddSignWithPrivkeySimple(
@@ -1612,18 +1320,14 @@ impl TransactionOperation {
         &mut output,
       )
     };
-    if error_code == 0 {
-      let output_obj = unsafe { collect_cstring_and_free(output) };
-      if let Err(ret) = output_obj {
-        result = Err(ret);
-      } else {
-        self.last_tx = output_obj.unwrap();
-        let output_byte = byte_from_hex_unsafe(&self.last_tx);
-        result = Ok(output_byte);
+    let result = match error_code {
+      0 => {
+        let output_obj = unsafe { collect_cstring_and_free(output) }?;
+        self.last_tx = output_obj;
+        Ok(byte_from_hex_unsafe(&self.last_tx))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1636,95 +1340,75 @@ impl TransactionOperation {
     redeem_script: &Script,
     signature_list: &[SignParameter],
   ) -> Result<Vec<u8>, CfdError> {
-    let mut result: Result<Vec<u8>, CfdError> =
-      Err(CfdError::Unknown("Failed to add_multisig_sign".to_string()));
-    let tx_obj = CString::new(tx);
-    let txid_obj = CString::new(outpoint.txid.to_hex());
-    let script_obj = CString::new(redeem_script.to_hex());
-    if tx_obj.is_err() || txid_obj.is_err() || script_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let txid = txid_obj.unwrap();
-    let script_hex = script_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+    let script_hex = alloc_c_string(&redeem_script.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut multisig_handle: *mut c_void = ptr::null_mut();
-    let mut error_code =
-      unsafe { CfdInitializeMultisigSign(handle.as_handle(), &mut multisig_handle) };
-    if error_code == 0 {
-      for sign_data in signature_list {
-        let signature_obj = CString::new(sign_data.to_hex());
-        let pubkey_obj = CString::new(sign_data.get_related_pubkey().to_hex());
-        if signature_obj.is_err() || pubkey_obj.is_err() {
-          result = Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-          error_code = 1;
-          break;
-        }
-        let signature = signature_obj.unwrap();
-        let related_pubkey = pubkey_obj.unwrap();
-        let sighash_type = sign_data.get_sighash_type();
-        error_code = unsafe {
-          if sign_data.can_use_der_encode() {
-            CfdAddMultisigSignDataToDer(
+    let error_code = unsafe { CfdInitializeMultisigSign(handle.as_handle(), &mut multisig_handle) };
+    let result = match error_code {
+      0 => {
+        let ret = {
+          for sign_data in signature_list {
+            let _err = {
+              let signature = alloc_c_string(&sign_data.to_hex())?;
+              let related_pubkey = alloc_c_string(&sign_data.get_related_pubkey().to_hex())?;
+              let sighash_type = sign_data.get_sighash_type();
+              let error_code = unsafe {
+                if sign_data.can_use_der_encode() {
+                  CfdAddMultisigSignDataToDer(
+                    handle.as_handle(),
+                    multisig_handle,
+                    signature.as_ptr(),
+                    sighash_type.to_c_value(),
+                    sighash_type.is_anyone_can_pay(),
+                    related_pubkey.as_ptr(),
+                  )
+                } else {
+                  CfdAddMultisigSignData(
+                    handle.as_handle(),
+                    multisig_handle,
+                    signature.as_ptr(),
+                    related_pubkey.as_ptr(),
+                  )
+                }
+              };
+              match error_code {
+                0 => Ok(()),
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
+          }
+          let mut output: *mut c_char = ptr::null_mut();
+          let error_code = unsafe {
+            CfdFinalizeMultisigSign(
               handle.as_handle(),
               multisig_handle,
-              signature.as_ptr(),
-              sighash_type.to_c_value(),
-              sighash_type.is_anyone_can_pay(),
-              related_pubkey.as_ptr(),
+              self.network.to_c_value(),
+              tx_str.as_ptr(),
+              txid.as_ptr(),
+              outpoint.vout,
+              hash_type.to_c_value(),
+              script_hex.as_ptr(),
+              &mut output,
             )
-          } else {
-            CfdAddMultisigSignData(
-              handle.as_handle(),
-              multisig_handle,
-              signature.as_ptr(),
-              related_pubkey.as_ptr(),
-            )
+          };
+          match error_code {
+            0 => {
+              let output_obj = unsafe { collect_cstring_and_free(output) }?;
+              self.last_tx = output_obj;
+              Ok(byte_from_hex_unsafe(&self.last_tx))
+            }
+            _ => Err(handle.get_error(error_code)),
           }
         };
-        if error_code != 0 {
-          result = Err(handle.get_error(error_code));
-          break;
+        unsafe {
+          CfdFreeMultisigSignHandle(handle.as_handle(), multisig_handle);
         }
+        ret
       }
-      if error_code == 0 {
-        let mut output: *mut c_char = ptr::null_mut();
-        error_code = unsafe {
-          CfdFinalizeMultisigSign(
-            handle.as_handle(),
-            multisig_handle,
-            self.network.to_c_value(),
-            tx_str.as_ptr(),
-            txid.as_ptr(),
-            outpoint.vout,
-            hash_type.to_c_value(),
-            script_hex.as_ptr(),
-            &mut output,
-          )
-        };
-        if error_code == 0 {
-          let output_obj = unsafe { collect_cstring_and_free(output) };
-          if let Err(ret) = output_obj {
-            result = Err(ret);
-          } else {
-            self.last_tx = output_obj.unwrap();
-            let output_byte = byte_from_hex_unsafe(&self.last_tx);
-            result = Ok(output_byte);
-          }
-        } else {
-          result = Err(handle.get_error(error_code));
-        }
-      }
-      unsafe {
-        CfdFreeMultisigSignHandle(handle.as_handle(), multisig_handle);
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1738,34 +1422,14 @@ impl TransactionOperation {
     key: &HashTypeData,
     option: &SigHashOption,
   ) -> Result<bool, CfdError> {
-    let result: Result<bool, CfdError>;
-    let tx_obj = CString::new(tx);
-    let txid_obj = CString::new(outpoint.txid.to_hex());
-    let sig_obj = CString::new(sign_data.to_hex());
-    let pubkey_obj = CString::new(key.pubkey.to_hex());
-    let script_obj = CString::new(key.script.to_hex());
-    let value_byte_obj = CString::new(option.value_byte.to_hex());
-    if tx_obj.is_err()
-      || txid_obj.is_err()
-      || sig_obj.is_err()
-      || pubkey_obj.is_err()
-      || script_obj.is_err()
-      || value_byte_obj.is_err()
-    {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let txid = txid_obj.unwrap();
-    let signature = sig_obj.unwrap();
-    let pubkey_hex = pubkey_obj.unwrap();
-    let script_hex = script_obj.unwrap();
-    let value_byte_hex = value_byte_obj.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+    let signature = alloc_c_string(&sign_data.to_hex())?;
+    let pubkey_hex = alloc_c_string(&key.pubkey.to_hex())?;
+    let script_hex = alloc_c_string(&key.script.to_hex())?;
+    let value_byte_hex = alloc_c_string(&option.value_byte.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let sighash_type = sign_data.get_sighash_type();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
     let error_code = unsafe {
       CfdVerifySignature(
         handle.as_handle(),
@@ -1783,13 +1447,11 @@ impl TransactionOperation {
         value_byte_hex.as_ptr(),
       )
     };
-    if error_code == 0 {
-      result = Ok(true)
-    } else if error_code == 7 {
-      result = Ok(false)
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => Ok(true),
+      7 => Ok(false),
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1801,31 +1463,13 @@ impl TransactionOperation {
     address: &Address,
     locking_script: &Script,
     option: &SigHashOption,
-  ) -> Result<bool, CfdError> {
-    let result: Result<bool, CfdError>;
-    let tx_obj = CString::new(tx);
-    let txid_obj = CString::new(outpoint.txid.to_hex());
-    let address_obj = CString::new(address.to_str().to_string());
-    let script_obj = CString::new(locking_script.to_hex());
-    let value_byte_obj = CString::new(option.value_byte.to_hex());
-    if tx_obj.is_err()
-      || txid_obj.is_err()
-      || address_obj.is_err()
-      || script_obj.is_err()
-      || value_byte_obj.is_err()
-    {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let txid = txid_obj.unwrap();
-    let address_str = address_obj.unwrap();
-    let script_hex = script_obj.unwrap();
-    let value_byte_hex = value_byte_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+  ) -> Result<(), CfdError> {
+    let tx_str = alloc_c_string(tx)?;
+    let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+    let address_str = alloc_c_string(address.to_str())?;
+    let script_hex = alloc_c_string(&locking_script.to_hex())?;
+    let value_byte_hex = alloc_c_string(&option.value_byte.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let error_code = unsafe {
       CfdVerifyTxSign(
         handle.as_handle(),
@@ -1840,13 +1484,10 @@ impl TransactionOperation {
         value_byte_hex.as_ptr(),
       )
     };
-    if error_code == 0 {
-      result = Ok(true)
-    } else if error_code == 7 {
-      result = Ok(false)
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => Ok(()),
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1857,11 +1498,8 @@ impl TransactionOperation {
     tx: &CString,
     index: u32,
   ) -> Result<ScriptWitness, CfdError> {
-    let mut result: Result<ScriptWitness, CfdError> = Err(CfdError::Unknown(
-      "Failed to get_tx_input_witness.".to_string(),
-    ));
     let mut count: c_uint = 0;
-    let mut error_code = unsafe {
+    let error_code = unsafe {
       CfdGetTxInWitnessCount(
         handle.as_handle(),
         self.network.to_c_value(),
@@ -1870,46 +1508,44 @@ impl TransactionOperation {
         &mut count,
       )
     };
-    if error_code == 0 {
-      let mut list: Vec<ByteData> = vec![];
-      let mut stack_index = 0;
-      while stack_index < count {
-        let mut stack_data: *mut c_char = ptr::null_mut();
-        error_code = unsafe {
-          CfdGetTxInWitness(
-            handle.as_handle(),
-            self.network.to_c_value(),
-            tx.as_ptr(),
-            index,
-            stack_index,
-            &mut stack_data,
-          )
-        };
-        if error_code == 0 {
-          let data_obj = unsafe { collect_cstring_and_free(stack_data) };
-          if let Err(ret) = data_obj {
-            result = Err(ret);
-            break;
-          } else {
-            let bytes = ByteData::from_str(&data_obj.unwrap());
-            if let Err(e) = bytes {
-              result = Err(e);
-            } else {
-              list.push(bytes.unwrap());
+    let result = match error_code {
+      0 => {
+        let mut list: Vec<ByteData> = vec![];
+        let mut stack_index = 0;
+        while stack_index < count {
+          let stack_bytes = {
+            let mut stack_data: *mut c_char = ptr::null_mut();
+            let error_code = unsafe {
+              CfdGetTxInWitness(
+                handle.as_handle(),
+                self.network.to_c_value(),
+                tx.as_ptr(),
+                index,
+                stack_index,
+                &mut stack_data,
+              )
+            };
+            match error_code {
+              0 => {
+                let data_obj = unsafe { collect_cstring_and_free(stack_data) }?;
+                ByteData::from_str(&data_obj)
+              }
+              _ => Err(handle.get_error(error_code)),
             }
-          }
-        } else {
-          result = Err(handle.get_error(error_code));
-          break;
+          }?;
+          list.push(stack_bytes);
+          stack_index += 1;
         }
-        stack_index += 1;
+        if list.len() == count as usize {
+          Ok(ScriptWitness::new(&list))
+        } else {
+          Err(CfdError::Unknown(
+            "Failed to get_tx_input_witness.".to_string(),
+          ))
+        }
       }
-      if list.len() == count as usize {
-        result = Ok(ScriptWitness::new(&list));
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     result
   }
 
@@ -1919,21 +1555,10 @@ impl TransactionOperation {
     address: &Address,
     locking_script: &Script,
   ) -> Result<u32, CfdError> {
-    let result: Result<u32, CfdError>;
-    let tx_obj = CString::new(tx);
-    let addr_obj = CString::new(address.to_str());
-    let script_obj = CString::new(locking_script.to_hex());
-    if tx_obj.is_err() || addr_obj.is_err() || script_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let addr = addr_obj.unwrap();
-    let script = script_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let addr = alloc_c_string(address.to_str())?;
+    let script = alloc_c_string(&locking_script.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut index: c_uint = 0;
     let error_code = unsafe {
       CfdGetTxOutIndex(
@@ -1945,11 +1570,10 @@ impl TransactionOperation {
         &mut index,
       )
     };
-    if error_code == 0 {
-      result = Ok(index);
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => Ok(index),
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1962,20 +1586,10 @@ impl TransactionOperation {
     txin_list: &[TxInData],
     txout_list: &[TxOutData],
   ) -> Result<Vec<u8>, CfdError> {
-    let mut result: Result<Vec<u8>, CfdError> =
-      Err(CfdError::Unknown("Failed to create_tx".to_string()));
-    let tx_obj = CString::new(tx);
-    if tx_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let tx_str = tx_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let tx_str = alloc_c_string(tx)?;
+    let handle = ErrorHandle::new()?;
     let mut create_handle: *mut c_void = ptr::null_mut();
-    let mut error_code = unsafe {
+    let error_code = unsafe {
       CfdInitializeTransaction(
         handle.as_handle(),
         self.network.to_c_value(),
@@ -1985,81 +1599,67 @@ impl TransactionOperation {
         &mut create_handle,
       )
     };
-    if error_code == 0 {
-      for input in txin_list {
-        let txid_obj = CString::new(input.outpoint.txid.to_hex());
-        if txid_obj.is_err() {
-          result = Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-          error_code = 1;
-          break;
-        }
-        let txid = txid_obj.unwrap();
-        error_code = unsafe {
-          CfdAddTransactionInput(
-            handle.as_handle(),
-            create_handle,
-            txid.as_ptr(),
-            input.outpoint.vout,
-            input.sequence,
-          )
+    let result = match error_code {
+      0 => {
+        let ret = {
+          for input in txin_list {
+            let _err = {
+              let txid = alloc_c_string(&input.outpoint.txid.to_hex())?;
+              let error_code = unsafe {
+                CfdAddTransactionInput(
+                  handle.as_handle(),
+                  create_handle,
+                  txid.as_ptr(),
+                  input.outpoint.vout,
+                  input.sequence,
+                )
+              };
+              match error_code {
+                0 => Ok(()),
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
+          }
+          for output in txout_list {
+            let _err = {
+              let address = alloc_c_string(output.address.to_str())?;
+              let script = alloc_c_string(&output.locking_script.to_hex())?;
+              let asset = alloc_c_string(&output.asset)?;
+              let error_code = unsafe {
+                CfdAddTransactionOutput(
+                  handle.as_handle(),
+                  create_handle,
+                  output.amount,
+                  address.as_ptr(),
+                  script.as_ptr(),
+                  asset.as_ptr(),
+                )
+              };
+              match error_code {
+                0 => Ok(()),
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
+          }
+          let mut output: *mut c_char = ptr::null_mut();
+          let error_code =
+            unsafe { CfdFinalizeTransaction(handle.as_handle(), create_handle, &mut output) };
+          match error_code {
+            0 => {
+              let output_obj = unsafe { collect_cstring_and_free(output) }?;
+              self.last_tx = output_obj;
+              Ok(byte_from_hex_unsafe(&self.last_tx))
+            }
+            _ => Err(handle.get_error(error_code)),
+          }
         };
-        if error_code != 0 {
-          result = Err(handle.get_error(error_code));
-          break;
+        unsafe {
+          CfdFreeTransactionHandle(handle.as_handle(), create_handle);
         }
+        ret
       }
-      if error_code == 0 {
-        for output in txout_list {
-          let address_obj = CString::new(output.address.to_str());
-          let script_obj = CString::new(output.locking_script.to_hex());
-          let asset_obj = CString::new(output.asset.clone());
-          if address_obj.is_err() || script_obj.is_err() || asset_obj.is_err() {
-            result = Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-            error_code = 1;
-            break;
-          }
-          let address = address_obj.unwrap();
-          let script = script_obj.unwrap();
-          let asset = asset_obj.unwrap();
-          error_code = unsafe {
-            CfdAddTransactionOutput(
-              handle.as_handle(),
-              create_handle,
-              output.amount,
-              address.as_ptr(),
-              script.as_ptr(),
-              asset.as_ptr(),
-            )
-          };
-          if error_code != 0 {
-            result = Err(handle.get_error(error_code));
-            break;
-          }
-        }
-      }
-      if error_code == 0 {
-        let mut output: *mut c_char = ptr::null_mut();
-        error_code =
-          unsafe { CfdFinalizeTransaction(handle.as_handle(), create_handle, &mut output) };
-        if error_code == 0 {
-          let output_obj = unsafe { collect_cstring_and_free(output) };
-          if let Err(ret) = output_obj {
-            result = Err(ret);
-          } else {
-            self.last_tx = output_obj.unwrap();
-            let output_byte = byte_from_hex_unsafe(&self.last_tx);
-            result = Ok(output_byte);
-          }
-        } else {
-          result = Err(handle.get_error(error_code));
-        }
-      }
-      unsafe {
-        CfdFreeTransactionHandle(handle.as_handle(), create_handle);
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }

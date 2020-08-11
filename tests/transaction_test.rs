@@ -154,7 +154,7 @@ mod tests {
     let verify_ret = tx.verify_sign_by_address(&outpoint1, &addr11, &amount);
     assert!(verify_ret.is_ok(), "err: \"{}\"", verify_ret.unwrap_err());
     let is_verify = verify_ret.unwrap();
-    assert_eq!(true, is_verify);
+    assert_eq!((), is_verify);
   }
 
   #[test]
@@ -223,8 +223,6 @@ mod tests {
     let addr11 = addr11_ret.unwrap();
     let verify_ret = tx.verify_sign_by_address(&outpoint1, &addr11, &amount);
     assert!(verify_ret.is_ok(), "err: \"{}\"", verify_ret.unwrap_err());
-    let is_verify = verify_ret.unwrap();
-    assert_eq!(true, is_verify);
   }
 
   #[test]

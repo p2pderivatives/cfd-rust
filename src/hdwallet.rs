@@ -3,11 +3,10 @@ extern crate libc;
 
 use self::libc::{c_char, c_int, c_uint, c_void};
 use crate::common::{
-  byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free, hex_from_bytes, ByteData,
-  CfdError, ErrorHandle, Network,
+  alloc_c_string, byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free,
+  collect_multi_cstring_and_free, hex_from_bytes, ByteData, CfdError, ErrorHandle, Network,
 };
 use crate::key::{Privkey, Pubkey};
-use std::ffi::CString;
 use std::fmt;
 use std::ptr;
 use std::result::Result::{Err, Ok};
@@ -61,17 +60,8 @@ pub struct ExtKey {
 }
 
 fn generate_pubkey(extkey: &str, network_type: Network) -> Result<Pubkey, CfdError> {
-  let result: Result<Pubkey, CfdError>;
-  let extkey_obj = CString::new(extkey);
-  if extkey_obj.is_err() {
-    return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-  }
-  let extkey_str = extkey_obj.unwrap();
-  let err_handle = ErrorHandle::new();
-  if let Err(err_handle) = err_handle {
-    return Err(err_handle);
-  }
-  let handle = err_handle.unwrap();
+  let extkey_str = alloc_c_string(extkey)?;
+  let handle = ErrorHandle::new()?;
   let mut pubkey_hex: *mut c_char = ptr::null_mut();
   let error_code = unsafe {
     CfdGetPubkeyFromExtkey(
@@ -81,32 +71,20 @@ fn generate_pubkey(extkey: &str, network_type: Network) -> Result<Pubkey, CfdErr
       &mut pubkey_hex,
     )
   };
-  if error_code == 0 {
-    let pubkey_obj = unsafe { collect_cstring_and_free(pubkey_hex) };
-    if let Err(ret) = pubkey_obj {
-      result = Err(ret);
-    } else {
-      result = Pubkey::from_str(&pubkey_obj.unwrap());
+  let result = match error_code {
+    0 => {
+      let pubkey_obj = unsafe { collect_cstring_and_free(pubkey_hex) }?;
+      Pubkey::from_str(&pubkey_obj)
     }
-  } else {
-    result = Err(handle.get_error(error_code));
-  }
+    _ => Err(handle.get_error(error_code)),
+  };
   handle.free_handle();
   result
 }
 
 fn generate_privkey(extkey: &str, network_type: Network) -> Result<Privkey, CfdError> {
-  let result: Result<Privkey, CfdError>;
-  let extkey_obj = CString::new(extkey);
-  if extkey_obj.is_err() {
-    return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-  }
-  let extkey_str = extkey_obj.unwrap();
-  let err_handle = ErrorHandle::new();
-  if let Err(err_handle) = err_handle {
-    return Err(err_handle);
-  }
-  let handle = err_handle.unwrap();
+  let extkey_str = alloc_c_string(extkey)?;
+  let handle = ErrorHandle::new()?;
   let mut privkey_hex: *mut c_char = ptr::null_mut();
   let mut wif: *mut c_char = ptr::null_mut();
   let error_code = unsafe {
@@ -118,36 +96,22 @@ fn generate_privkey(extkey: &str, network_type: Network) -> Result<Privkey, CfdE
       &mut wif,
     )
   };
-  if error_code == 0 {
-    let privkey_obj = unsafe { collect_cstring_and_free(privkey_hex) };
-    let wif_obj = unsafe { collect_cstring_and_free(wif) };
-    if let Err(ret) = privkey_obj {
-      result = Err(ret);
-    } else if let Err(ret) = wif_obj {
-      result = Err(ret);
-    } else {
-      result = Privkey::from_wif(&wif_obj.unwrap());
+  let result = match error_code {
+    0 => {
+      let str_list = unsafe { collect_multi_cstring_and_free(&[privkey_hex, wif]) }?;
+      let wif_obj = &str_list[1];
+      Privkey::from_wif(wif_obj)
     }
-  } else {
-    result = Err(handle.get_error(error_code));
-  }
+    _ => Err(handle.get_error(error_code)),
+  };
   handle.free_handle();
   result
 }
 
 impl ExtKey {
   fn from_extkey(extkey: &str) -> Result<ExtKey, CfdError> {
-    let result: Result<ExtKey, CfdError>;
-    let extkey_obj = CString::new(extkey);
-    if extkey_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let extkey_str = extkey_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let extkey_str = alloc_c_string(extkey)?;
+    let handle = ErrorHandle::new()?;
     let mut version: *mut c_char = ptr::null_mut();
     let mut fingerprint: *mut c_char = ptr::null_mut();
     let mut chain_code: *mut c_char = ptr::null_mut();
@@ -164,27 +128,17 @@ impl ExtKey {
         &mut child_number,
       )
     };
-    if error_code == 0 {
-      let version_obj;
-      let fingerprint_obj;
-      let chain_code_obj;
-      unsafe {
-        version_obj = collect_cstring_and_free(version);
-        fingerprint_obj = collect_cstring_and_free(fingerprint);
-        chain_code_obj = collect_cstring_and_free(chain_code);
-      }
-      if let Err(ret) = version_obj {
-        result = Err(ret);
-      } else if let Err(ret) = fingerprint_obj {
-        result = Err(ret);
-      } else if let Err(ret) = chain_code_obj {
-        result = Err(ret);
-      } else {
-        let version_str = version_obj.unwrap();
-        let version_byte = byte_from_hex_unsafe(&version_str);
-        let fingerprint_byte = byte_from_hex_unsafe(&fingerprint_obj.unwrap());
-        let chain_code_byte = byte_from_hex_unsafe(&chain_code_obj.unwrap());
-        let net_type: Result<Network, CfdError> = match &version_str as &str {
+    let result = match error_code {
+      0 => {
+        let str_list =
+          unsafe { collect_multi_cstring_and_free(&[version, fingerprint, chain_code]) }?;
+        let version_str = &str_list[0];
+        let fingerprint_obj = &str_list[1];
+        let chain_code_obj = &str_list[2];
+        let version_byte = byte_from_hex_unsafe(version_str);
+        let fingerprint_byte = byte_from_hex_unsafe(fingerprint_obj);
+        let chain_code_byte = byte_from_hex_unsafe(chain_code_obj);
+        let net_type = match &version_str as &str {
           XPRIV_MAINNET_VERSION => Ok(Network::Mainnet),
           XPRIV_TESTNET_VERSION => Ok(Network::Testnet),
           XPUB_MAINNET_VERSION => Ok(Network::Mainnet),
@@ -192,25 +146,19 @@ impl ExtKey {
           _ => Err(CfdError::IllegalArgument(
             "unsupported version.".to_string(),
           )),
-        };
-        if let Err(ret) = net_type {
-          result = Err(ret);
-        } else {
-          let extkey_obj = ExtKey {
-            extkey: extkey.to_string(),
-            version: ByteData::from_slice(&version_byte),
-            fingerprint: ByteData::from_slice(&fingerprint_byte),
-            chain_code: ByteData::from_slice(&chain_code_byte),
-            depth: depth as u8,
-            child_number,
-            network_type: net_type.unwrap(),
-          };
-          result = Ok(extkey_obj);
-        }
+        }?;
+        Ok(ExtKey {
+          extkey: extkey.to_string(),
+          version: ByteData::from_slice(&version_byte),
+          fingerprint: ByteData::from_slice(&fingerprint_byte),
+          chain_code: ByteData::from_slice(&chain_code_byte),
+          depth: depth as u8,
+          child_number,
+          network_type: net_type,
+        })
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -221,17 +169,8 @@ impl ExtKey {
     hardened: bool,
     key_type: &ExtKeyType,
   ) -> Result<ExtKey, CfdError> {
-    let result: Result<ExtKey, CfdError>;
-    let extkey_obj = CString::new(self.extkey.clone());
-    if extkey_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let extkey_str = extkey_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let extkey_str = alloc_c_string(&self.extkey)?;
+    let handle = ErrorHandle::new()?;
     let mut extkey_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtkeyFromParent(
@@ -244,16 +183,13 @@ impl ExtKey {
         &mut extkey_hex,
       )
     };
-    if error_code == 0 {
-      let extkey_obj = unsafe { collect_cstring_and_free(extkey_hex) };
-      if let Err(ret) = extkey_obj {
-        result = Err(ret);
-      } else {
-        result = ExtKey::from_extkey(&extkey_obj.unwrap());
+    let result = match error_code {
+      0 => {
+        let extkey_obj = unsafe { collect_cstring_and_free(extkey_hex) }?;
+        ExtKey::from_extkey(&extkey_obj)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -268,11 +204,7 @@ impl ExtKey {
     }
     let mut temp_extkey = self.clone();
     for child_number in number_list {
-      let result = temp_extkey.derive_from_number(*child_number, false, &key_type);
-      if let Err(ret) = result {
-        return Err(ret);
-      }
-      temp_extkey = result.unwrap();
+      temp_extkey = temp_extkey.derive_from_number(*child_number, false, &key_type)?;
     }
     Ok(temp_extkey)
   }
@@ -282,19 +214,9 @@ impl ExtKey {
     path: &str,
     key_type: &ExtKeyType,
   ) -> Result<ExtKey, CfdError> {
-    let result: Result<ExtKey, CfdError>;
-    let extkey_obj = CString::new(self.extkey.clone());
-    let path_obj = CString::new(path);
-    if extkey_obj.is_err() || path_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let extkey_str = extkey_obj.unwrap();
-    let path_str = path_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let extkey_str = alloc_c_string(&self.extkey)?;
+    let path_str = alloc_c_string(path)?;
+    let handle = ErrorHandle::new()?;
     let mut extkey_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtkeyFromParentPath(
@@ -306,16 +228,13 @@ impl ExtKey {
         &mut extkey_hex,
       )
     };
-    if error_code == 0 {
-      let extkey_obj = unsafe { collect_cstring_and_free(extkey_hex) };
-      if let Err(ret) = extkey_obj {
-        result = Err(ret);
-      } else {
-        result = ExtKey::from_extkey(&extkey_obj.unwrap());
+    let result = match error_code {
+      0 => {
+        let extkey_obj = unsafe { collect_cstring_and_free(extkey_hex) }?;
+        ExtKey::from_extkey(&extkey_obj)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -384,17 +303,8 @@ pub struct ExtPrivkey {
 
 impl ExtPrivkey {
   pub fn from_seed(seed: &[u8], network_type: &Network) -> Result<ExtPrivkey, CfdError> {
-    let result: Result<ExtPrivkey, CfdError>;
-    let seed_obj = CString::new(hex_from_bytes(seed));
-    if seed_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let seed_str = seed_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let seed_str = alloc_c_string(&hex_from_bytes(seed))?;
+    let handle = ErrorHandle::new()?;
     let mut extkey_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtkeyFromSeed(
@@ -405,16 +315,13 @@ impl ExtPrivkey {
         &mut extkey_hex,
       )
     };
-    if error_code == 0 {
-      let extkey_obj = unsafe { collect_cstring_and_free(extkey_hex) };
-      if let Err(ret) = extkey_obj {
-        result = Err(ret);
-      } else {
-        result = ExtPrivkey::new(&extkey_obj.unwrap());
+    let result = match error_code {
+      0 => {
+        let extkey_obj = unsafe { collect_cstring_and_free(extkey_hex) }?;
+        ExtPrivkey::new(&extkey_obj)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -428,14 +335,8 @@ impl ExtPrivkey {
   }
 
   fn from_key(extkey: ExtKey) -> Result<ExtPrivkey, CfdError> {
-    let privkey_obj = generate_privkey(extkey.to_str(), *extkey.get_network_type());
-    if let Err(ret) = privkey_obj {
-      return Err(ret);
-    }
-    Ok(ExtPrivkey {
-      extkey,
-      privkey: privkey_obj.unwrap(),
-    })
+    let privkey = generate_privkey(extkey.to_str(), *extkey.get_network_type())?;
+    Ok(ExtPrivkey { extkey, privkey })
   }
 
   pub fn derive_from_number(
@@ -445,42 +346,25 @@ impl ExtPrivkey {
   ) -> Result<ExtPrivkey, CfdError> {
     let extkey = self
       .extkey
-      .derive_from_number(child_number, hardened, &ExtKeyType::Privkey);
-    if let Err(ret) = extkey {
-      return Err(ret);
-    }
-    ExtPrivkey::from_key(extkey.unwrap())
+      .derive_from_number(child_number, hardened, &ExtKeyType::Privkey)?;
+    ExtPrivkey::from_key(extkey)
   }
 
   pub fn derive_from_number_list(&self, number_list: &[u32]) -> Result<ExtPrivkey, CfdError> {
     let extkey = self
       .extkey
-      .derive_from_number_list(number_list, &ExtKeyType::Privkey);
-    if let Err(ret) = extkey {
-      return Err(ret);
-    }
-    ExtPrivkey::from_key(extkey.unwrap())
+      .derive_from_number_list(number_list, &ExtKeyType::Privkey)?;
+    ExtPrivkey::from_key(extkey)
   }
+
   pub fn derive_from_path(&self, path: &str) -> Result<ExtPrivkey, CfdError> {
-    let extkey = self.extkey.derive_from_path(path, &ExtKeyType::Privkey);
-    if let Err(ret) = extkey {
-      return Err(ret);
-    }
-    ExtPrivkey::from_key(extkey.unwrap())
+    let extkey = self.extkey.derive_from_path(path, &ExtKeyType::Privkey)?;
+    ExtPrivkey::from_key(extkey)
   }
 
   pub fn get_ext_pubkey(&self) -> Result<ExtPubkey, CfdError> {
-    let result: Result<ExtPubkey, CfdError>;
-    let extkey_obj = CString::new(self.extkey.to_str());
-    if extkey_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let extkey_str = extkey_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let extkey_str = alloc_c_string(&self.extkey.to_str())?;
+    let handle = ErrorHandle::new()?;
     let mut ext_pubkey_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtPubkey(
@@ -490,16 +374,13 @@ impl ExtPrivkey {
         &mut ext_pubkey_hex,
       )
     };
-    if error_code == 0 {
-      let ext_pubkey_obj = unsafe { collect_cstring_and_free(ext_pubkey_hex) };
-      if let Err(ret) = ext_pubkey_obj {
-        result = Err(ret);
-      } else {
-        result = ExtPubkey::new(&ext_pubkey_obj.unwrap());
+    let result = match error_code {
+      0 => {
+        let ext_pubkey_obj = unsafe { collect_cstring_and_free(ext_pubkey_hex) }?;
+        ExtPubkey::new(&ext_pubkey_obj)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -511,41 +392,23 @@ impl ExtPrivkey {
   ) -> Result<ExtPubkey, CfdError> {
     let extkey = self
       .extkey
-      .derive_from_number(child_number, hardened, &ExtKeyType::Privkey);
-    if let Err(ret) = extkey {
-      return Err(ret);
-    }
-    let ext_privkey = ExtPrivkey::from_key(extkey.unwrap());
-    if let Err(ret) = ext_privkey {
-      return Err(ret);
-    }
-    ext_privkey.unwrap().get_ext_pubkey()
+      .derive_from_number(child_number, hardened, &ExtKeyType::Privkey)?;
+    let ext_privkey = ExtPrivkey::from_key(extkey)?;
+    ext_privkey.get_ext_pubkey()
   }
 
   pub fn derive_pubkey_from_number_list(&self, number_list: &[u32]) -> Result<ExtPubkey, CfdError> {
     let extkey = self
       .extkey
-      .derive_from_number_list(number_list, &ExtKeyType::Privkey);
-    if let Err(ret) = extkey {
-      return Err(ret);
-    }
-    let ext_privkey = ExtPrivkey::from_key(extkey.unwrap());
-    if let Err(ret) = ext_privkey {
-      return Err(ret);
-    }
-    ext_privkey.unwrap().get_ext_pubkey()
+      .derive_from_number_list(number_list, &ExtKeyType::Privkey)?;
+    let ext_privkey = ExtPrivkey::from_key(extkey)?;
+    ext_privkey.get_ext_pubkey()
   }
 
   pub fn derive_pubkey_from_path(&self, path: &str) -> Result<ExtPubkey, CfdError> {
-    let extkey = self.extkey.derive_from_path(path, &ExtKeyType::Privkey);
-    if let Err(ret) = extkey {
-      return Err(ret);
-    }
-    let ext_privkey = ExtPrivkey::from_key(extkey.unwrap());
-    if let Err(ret) = ext_privkey {
-      return Err(ret);
-    }
-    ext_privkey.unwrap().get_ext_pubkey()
+    let extkey = self.extkey.derive_from_path(path, &ExtKeyType::Privkey)?;
+    let ext_privkey = ExtPrivkey::from_key(extkey)?;
+    ext_privkey.get_ext_pubkey()
   }
 
   #[inline]
@@ -624,11 +487,8 @@ pub struct ExtPubkey {
 
 impl ExtPubkey {
   pub fn new(extkey: &str) -> Result<ExtPubkey, CfdError> {
-    let extkey_ret = ExtKey::from_extkey(extkey);
-    if let Err(ret) = extkey_ret {
-      return Err(ret);
-    }
-    ExtPubkey::from_key(extkey_ret.unwrap())
+    let extkey_ret = ExtKey::from_extkey(extkey)?;
+    ExtPubkey::from_key(extkey_ret)
   }
 
   pub fn from_parent_info(
@@ -678,41 +538,21 @@ impl ExtPubkey {
     depth: u32,
     child_number: u32,
   ) -> Result<ExtPubkey, CfdError> {
-    let result: Result<ExtPubkey, CfdError>;
-
-    let fingerprint_obj = unsafe {
-      if let Some(fingerprint) = fingerprint.as_ref() {
-        CString::new(fingerprint.to_hex())
-      } else {
-        CString::new(String::default())
+    let fingerprint_hex = unsafe {
+      match fingerprint.as_ref() {
+        Some(fingerprint) => alloc_c_string(&fingerprint.to_hex()),
+        _ => alloc_c_string(""),
       }
-    };
-    let parent_pubkey_obj = unsafe {
-      if let Some(parent_pubkey) = parent_pubkey.as_ref() {
-        CString::new(parent_pubkey.to_hex())
-      } else {
-        CString::new(String::default())
+    }?;
+    let parent_pubkey_hex = unsafe {
+      match parent_pubkey.as_ref() {
+        Some(parent_pubkey) => alloc_c_string(&parent_pubkey.to_hex()),
+        _ => alloc_c_string(""),
       }
-    };
-    let pubkey_obj = CString::new(pubkey.to_hex());
-    let chain_code_obj = CString::new(chain_code.to_hex());
-    if fingerprint_obj.is_err()
-      || parent_pubkey_obj.is_err()
-      || pubkey_obj.is_err()
-      || chain_code_obj.is_err()
-    {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let parent_pubkey_hex = parent_pubkey_obj.unwrap();
-    let pubkey_hex = pubkey_obj.unwrap();
-    let fingerprint_hex = fingerprint_obj.unwrap();
-    let chain_code_hex = chain_code_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    }?;
+    let pubkey_hex = alloc_c_string(&pubkey.to_hex())?;
+    let chain_code_hex = alloc_c_string(&chain_code.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut extkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtkey(
@@ -728,16 +568,13 @@ impl ExtPubkey {
         &mut extkey,
       )
     };
-    if error_code == 0 {
-      let extkey_obj = unsafe { collect_cstring_and_free(extkey) };
-      if let Err(ret) = extkey_obj {
-        result = Err(ret);
-      } else {
-        result = ExtPubkey::new(&extkey_obj.unwrap());
+    let result = match error_code {
+      0 => {
+        let extkey_obj = unsafe { collect_cstring_and_free(extkey) }?;
+        ExtPubkey::new(&extkey_obj)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -753,18 +590,9 @@ impl ExtPubkey {
   }
 
   fn from_key(extkey: ExtKey) -> Result<ExtPubkey, CfdError> {
-    let extkey_ret = ExtPubkey::validate(&extkey);
-    if let Err(ret) = extkey_ret {
-      return Err(ret);
-    }
-    let pubkey_obj = generate_pubkey(extkey.to_str(), *extkey.get_network_type());
-    if let Err(ret) = pubkey_obj {
-      return Err(ret);
-    }
-    Ok(ExtPubkey {
-      extkey,
-      pubkey: pubkey_obj.unwrap(),
-    })
+    let _ret = ExtPubkey::validate(&extkey)?;
+    let pubkey = generate_pubkey(extkey.to_str(), *extkey.get_network_type())?;
+    Ok(ExtPubkey { extkey, pubkey })
   }
 
   pub fn derive_from_number(
@@ -774,27 +602,19 @@ impl ExtPubkey {
   ) -> Result<ExtPubkey, CfdError> {
     let extkey = self
       .extkey
-      .derive_from_number(child_number, hardened, &ExtKeyType::Pubkey);
-    if let Err(ret) = extkey {
-      return Err(ret);
-    }
-    ExtPubkey::from_key(extkey.unwrap())
+      .derive_from_number(child_number, hardened, &ExtKeyType::Pubkey)?;
+    ExtPubkey::from_key(extkey)
   }
   pub fn derive_from_number_list(&self, number_list: &[u32]) -> Result<ExtPubkey, CfdError> {
     let extkey = self
       .extkey
-      .derive_from_number_list(number_list, &ExtKeyType::Pubkey);
-    if let Err(ret) = extkey {
-      return Err(ret);
-    }
-    ExtPubkey::from_key(extkey.unwrap())
+      .derive_from_number_list(number_list, &ExtKeyType::Pubkey)?;
+    ExtPubkey::from_key(extkey)
   }
+
   pub fn derive_from_path(&self, path: &str) -> Result<ExtPubkey, CfdError> {
-    let extkey = self.extkey.derive_from_path(path, &ExtKeyType::Pubkey);
-    if let Err(ret) = extkey {
-      return Err(ret);
-    }
-    ExtPubkey::from_key(extkey.unwrap())
+    let extkey = self.extkey.derive_from_path(path, &ExtKeyType::Pubkey)?;
+    ExtPubkey::from_key(extkey)
   }
 
   #[inline]
@@ -900,21 +720,8 @@ impl HDWallet {
   }
 
   pub fn mnemonic_word_list(lang: MnemonicLanguage) -> Result<Vec<String>, CfdError> {
-    let mut result: Result<Vec<String>, CfdError> = Err(CfdError::Unknown(
-      "Failed to mnemonic_word_list.".to_string(),
-    ));
-
-    let lang_obj = CString::new(lang.to_str());
-    if lang_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let language = lang_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let language = alloc_c_string(&lang.to_str())?;
+    let handle = ErrorHandle::new()?;
     let mut max_num: c_uint = 0;
     let mut mnemonic_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe {
@@ -925,65 +732,55 @@ impl HDWallet {
         &mut max_num,
       )
     };
-    if error_code == 0 {
-      let mut list: Vec<String> = vec![];
-      list.reserve(max_num as usize);
-      let mut index = 0;
+    let result = match error_code {
+      0 => {
+        let ret = {
+          let mut list: Vec<String> = vec![];
+          list.reserve(max_num as usize);
+          let mut index = 0;
+          let mut result: Result<Vec<String>, CfdError> = Err(CfdError::Unknown(
+            "Failed to mnemonic_word_list.".to_string(),
+          ));
 
-      while index < max_num {
-        let mut mnemonic_word: *mut c_char = ptr::null_mut();
-        let error_code = unsafe {
-          CfdGetMnemonicWord(
-            handle.as_handle(),
-            mnemonic_handle,
-            index,
-            &mut mnemonic_word,
-          )
-        };
-        if error_code == 0 {
-          let mnemonic_word_obj = unsafe { collect_cstring_and_free(mnemonic_word) };
-          if let Err(ret) = mnemonic_word_obj {
-            result = Err(ret);
-            break;
-          } else {
-            let word = mnemonic_word_obj.unwrap();
+          while index < max_num {
+            let word = {
+              let mut mnemonic_word: *mut c_char = ptr::null_mut();
+              let error_code = unsafe {
+                CfdGetMnemonicWord(
+                  handle.as_handle(),
+                  mnemonic_handle,
+                  index,
+                  &mut mnemonic_word,
+                )
+              };
+              match error_code {
+                0 => unsafe { collect_cstring_and_free(mnemonic_word) },
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
             list.push(word);
+            index += 1;
           }
-        } else {
-          result = Err(handle.get_error(error_code));
-          break;
+          if list.len() == (max_num as usize) {
+            result = Ok(list);
+          }
+          result
+        };
+        unsafe {
+          CfdFreeMnemonicWordList(handle.as_handle(), mnemonic_handle);
         }
-        index += 1;
+        ret
       }
-      unsafe {
-        CfdFreeMnemonicWordList(handle.as_handle(), mnemonic_handle);
-      }
-      if list.len() == (max_num as usize) {
-        result = Ok(list);
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
 
   pub fn mnemonic_from_entropy(entropy: &[u8], lang: MnemonicLanguage) -> Result<String, CfdError> {
-    let result: Result<String, CfdError>;
-
-    let entropy_obj = CString::new(hex_from_bytes(&entropy));
-    let language_obj = CString::new(lang.to_str());
-    if entropy_obj.is_err() || language_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let entropy_hex = entropy_obj.unwrap();
-    let language = language_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let entropy_hex = alloc_c_string(&hex_from_bytes(&entropy))?;
+    let language = alloc_c_string(&lang.to_str())?;
+    let handle = ErrorHandle::new()?;
     let mut mnemonic: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdConvertEntropyToMnemonic(
@@ -993,16 +790,10 @@ impl HDWallet {
         &mut mnemonic,
       )
     };
-    if error_code == 0 {
-      let mnemonic_obj = unsafe { collect_cstring_and_free(mnemonic) };
-      if let Err(ret) = mnemonic_obj {
-        result = Err(ret);
-      } else {
-        result = Ok(mnemonic_obj.unwrap());
-      }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => unsafe { collect_cstring_and_free(mnemonic) },
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1011,22 +802,10 @@ impl HDWallet {
     mnemonic: &str,
     lang: MnemonicLanguage,
   ) -> Result<Vec<u8>, CfdError> {
-    let result: Result<Vec<u8>, CfdError>;
-    let mnemonic_obj = CString::new(mnemonic);
-    let language_obj = CString::new(lang.to_str());
-    let passphrase_obj = CString::new(String::default());
-    if mnemonic_obj.is_err() || language_obj.is_err() || passphrase_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let mnemonic_str = mnemonic_obj.unwrap();
-    let language = language_obj.unwrap();
-    let passphrase = passphrase_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let passphrase = alloc_c_string("")?;
+    let language = alloc_c_string(&lang.to_str())?;
+    let mnemonic_str = alloc_c_string(&mnemonic)?;
+    let handle = ErrorHandle::new()?;
     let mut seed: *mut c_char = ptr::null_mut();
     let mut entropy: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
@@ -1041,19 +820,14 @@ impl HDWallet {
         &mut entropy,
       )
     };
-    if error_code == 0 {
-      let seed_obj = unsafe { collect_cstring_and_free(seed) };
-      let entropy_obj = unsafe { collect_cstring_and_free(entropy) };
-      if let Err(ret) = seed_obj {
-        result = Err(ret);
-      } else if let Err(ret) = entropy_obj {
-        result = Err(ret);
-      } else {
-        result = byte_from_hex(&entropy_obj.unwrap());
+    let result = match error_code {
+      0 => {
+        let str_list = unsafe { collect_multi_cstring_and_free(&[seed, entropy]) }?;
+        let entropy_obj = &str_list[1];
+        byte_from_hex(entropy_obj)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1067,22 +841,10 @@ impl HDWallet {
     lang: MnemonicLanguage,
     passphrase: &str,
   ) -> Result<HDWallet, CfdError> {
-    let result: Result<HDWallet, CfdError>;
-    let mnemonic_obj = CString::new(mnemonic);
-    let language_obj = CString::new(lang.to_str());
-    let passphrase_obj = CString::new(passphrase);
-    if mnemonic_obj.is_err() || language_obj.is_err() || passphrase_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let mnemonic_str = mnemonic_obj.unwrap();
-    let language = language_obj.unwrap();
-    let passphrase = passphrase_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let passphrase = alloc_c_string(passphrase)?;
+    let language = alloc_c_string(&lang.to_str())?;
+    let mnemonic_str = alloc_c_string(&mnemonic)?;
+    let handle = ErrorHandle::new()?;
     let mut seed: *mut c_char = ptr::null_mut();
     let mut entropy: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
@@ -1097,35 +859,26 @@ impl HDWallet {
         &mut entropy,
       )
     };
-    if error_code == 0 {
-      let seed_obj = unsafe { collect_cstring_and_free(seed) };
-      let entropy_obj = unsafe { collect_cstring_and_free(entropy) };
-      if let Err(ret) = seed_obj {
-        result = Err(ret);
-      } else if let Err(ret) = entropy_obj {
-        result = Err(ret);
-      } else {
-        result = Ok(HDWallet {
-          seed: byte_from_hex_unsafe(&seed_obj.unwrap()),
-        });
+    let result = match error_code {
+      0 => {
+        let list = unsafe { collect_multi_cstring_and_free(&[seed, entropy]) }?;
+        let seed_obj = &list[0];
+        Ok(HDWallet {
+          seed: byte_from_hex_unsafe(seed_obj),
+        })
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
 
   pub fn from_slice(seed: &[u8]) -> Result<HDWallet, CfdError> {
     // verify
-    let ext_priv = ExtPrivkey::from_seed(seed, &Network::Mainnet);
-    if let Err(ret) = ext_priv {
-      Err(ret)
-    } else {
-      Ok(HDWallet {
-        seed: seed.to_vec(),
-      })
-    }
+    let _verify = ExtPrivkey::from_seed(seed, &Network::Mainnet)?;
+    Ok(HDWallet {
+      seed: seed.to_vec(),
+    })
   }
 
   #[inline]
@@ -1136,28 +889,24 @@ impl HDWallet {
   pub fn get_privkey(&self, network_type: &Network) -> Result<ExtPrivkey, CfdError> {
     ExtPrivkey::from_seed(&self.seed, network_type)
   }
+
   pub fn get_privkey_from_path(
     &self,
     network_type: &Network,
     bip32path: &str,
   ) -> Result<ExtPrivkey, CfdError> {
-    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type);
-    if let Err(ret) = ext_priv {
-      return Err(ret);
-    }
-    ext_priv.unwrap().derive_from_path(bip32path)
+    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type)?;
+    ext_priv.derive_from_path(bip32path)
   }
+
   pub fn get_privkey_from_number(
     &self,
     network_type: &Network,
     child_number: u32,
     hardened: bool,
   ) -> Result<ExtPrivkey, CfdError> {
-    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type);
-    if let Err(ret) = ext_priv {
-      return Err(ret);
-    }
-    ext_priv.unwrap().derive_from_number(child_number, hardened)
+    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type)?;
+    ext_priv.derive_from_number(child_number, hardened)
   }
 
   pub fn get_privkey_from_number_list(
@@ -1165,57 +914,41 @@ impl HDWallet {
     network_type: &Network,
     child_number_list: &[u32],
   ) -> Result<ExtPrivkey, CfdError> {
-    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type);
-    if let Err(ret) = ext_priv {
-      return Err(ret);
-    }
-    ext_priv.unwrap().derive_from_number_list(child_number_list)
+    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type)?;
+    ext_priv.derive_from_number_list(child_number_list)
   }
 
   pub fn get_pubkey(&self, network_type: &Network) -> Result<ExtPubkey, CfdError> {
-    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type);
-    if let Err(ret) = ext_priv {
-      return Err(ret);
-    }
-    ext_priv.unwrap().get_ext_pubkey()
+    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type)?;
+    ext_priv.get_ext_pubkey()
   }
+
   pub fn get_pubkey_from_path(
     &self,
     network_type: &Network,
     bip32path: &str,
   ) -> Result<ExtPubkey, CfdError> {
-    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type);
-    if let Err(ret) = ext_priv {
-      return Err(ret);
-    }
-    ext_priv.unwrap().derive_pubkey_from_path(bip32path)
+    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type)?;
+    ext_priv.derive_pubkey_from_path(bip32path)
   }
+
   pub fn get_pubkey_from_number(
     &self,
     network_type: &Network,
     child_number: u32,
     hardened: bool,
   ) -> Result<ExtPubkey, CfdError> {
-    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type);
-    if let Err(ret) = ext_priv {
-      return Err(ret);
-    }
-    ext_priv
-      .unwrap()
-      .derive_pubkey_from_number(child_number, hardened)
+    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type)?;
+    ext_priv.derive_pubkey_from_number(child_number, hardened)
   }
+
   pub fn get_pubkey_from_number_list(
     &self,
     network_type: &Network,
     child_number_list: &[u32],
   ) -> Result<ExtPubkey, CfdError> {
-    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type);
-    if let Err(ret) = ext_priv {
-      return Err(ret);
-    }
-    ext_priv
-      .unwrap()
-      .derive_pubkey_from_number_list(child_number_list)
+    let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type)?;
+    ext_priv.derive_pubkey_from_number_list(child_number_list)
   }
 }
 

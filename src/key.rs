@@ -3,10 +3,9 @@ extern crate libc;
 
 use self::libc::{c_char, c_int, c_void};
 use crate::common::{
-  byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free, hex_from_bytes, ByteData,
-  CfdError, ErrorHandle, Network,
+  alloc_c_string, byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free,
+  collect_multi_cstring_and_free, hex_from_bytes, ByteData, CfdError, ErrorHandle, Network,
 };
-use std::ffi::CString;
 use std::fmt;
 use std::ptr;
 use std::result::Result::{Err, Ok};
@@ -73,12 +72,7 @@ impl Privkey {
       return Err(CfdError::IllegalArgument("invalid privkey.".to_string()));
     }
     let mut privkey = Privkey::from_bytes(key);
-    let wif = privkey.generate_wif(&privkey.net_type, privkey.is_compressed);
-    if let Ok(wif) = wif {
-      privkey.wif = wif;
-    } else if let Err(result) = wif {
-      return Err(result);
-    }
+    privkey.wif = privkey.generate_wif(&privkey.net_type, privkey.is_compressed)?;
     Ok(privkey)
   }
 
@@ -111,19 +105,8 @@ impl Privkey {
   /// let key_result = Privkey::from_wif(&wif);
   /// ```
   pub fn from_wif(wif: &str) -> Result<Privkey, CfdError> {
-    let mut result: Result<Privkey, CfdError> =
-      Err(CfdError::Unknown("failed to generate wif".to_string()));
-
-    let wif_obj = CString::new(wif);
-    if wif_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let wif_str = wif_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let wif_str = alloc_c_string(wif)?;
+    let handle = ErrorHandle::new()?;
     let mut privkey_hex: *mut c_char = ptr::null_mut();
     let mut is_compressed = true;
     let mut network_type: c_int = 0;
@@ -136,21 +119,18 @@ impl Privkey {
         &mut is_compressed,
       )
     };
-    if error_code == 0 {
-      let privkey = unsafe { collect_cstring_and_free(privkey_hex) };
-      if let Err(result) = privkey {
-        return Err(result);
-      } else if let Ok(privkey_hex) = privkey {
-        let key = byte_from_hex_unsafe(&privkey_hex);
+    let result = match error_code {
+      0 => {
+        let privkey = unsafe { collect_cstring_and_free(privkey_hex) }?;
+        let key = byte_from_hex_unsafe(&privkey);
         let mut privkey = Privkey::from_bytes(&key);
         privkey.wif = wif.to_string();
         privkey.net_type = Network::from_c_value(network_type);
         privkey.is_compressed = is_compressed;
-        result = Ok(privkey);
+        Ok(privkey)
       }
-    } else {
-      return Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -168,13 +148,7 @@ impl Privkey {
   /// let key_result = Privkey::generate(&Network::Mainnet, true);
   /// ```
   pub fn generate(network_type: &Network, is_compressed: bool) -> Result<Privkey, CfdError> {
-    let result: Result<Privkey, CfdError>;
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let handle = ErrorHandle::new()?;
     let mut pubkey_hex: *mut c_char = ptr::null_mut();
     let mut privkey_hex: *mut c_char = ptr::null_mut();
     let mut wif: *mut c_char = ptr::null_mut();
@@ -188,33 +162,20 @@ impl Privkey {
         &mut wif,
       )
     };
-    if error_code == 0 {
-      let pubkey_obj;
-      let privkey_obj;
-      let wif_obj;
-      unsafe {
-        pubkey_obj = collect_cstring_and_free(pubkey_hex);
-        privkey_obj = collect_cstring_and_free(privkey_hex);
-        wif_obj = collect_cstring_and_free(wif);
-      }
-      if let Err(ret) = pubkey_obj {
-        result = Err(ret);
-      } else if let Err(ret) = privkey_obj {
-        result = Err(ret);
-      } else if let Err(ret) = wif_obj {
-        result = Err(ret);
-      } else {
-        let privkey_bytes = byte_from_hex_unsafe(&privkey_obj.unwrap());
-        let wif = wif_obj.unwrap();
+    let result = match error_code {
+      0 => {
+        let str_list = unsafe { collect_multi_cstring_and_free(&[pubkey_hex, privkey_hex, wif]) }?;
+        let privkey_obj = &str_list[1];
+        let wif_str = &str_list[2];
+        let privkey_bytes = byte_from_hex_unsafe(&privkey_obj);
         let mut privkey = Privkey::from_bytes(&privkey_bytes);
-        privkey.wif = wif;
+        privkey.wif = wif_str.clone();
         privkey.net_type = *network_type;
         privkey.is_compressed = is_compressed;
-        result = Ok(privkey);
+        Ok(privkey)
       }
-    } else {
-      return Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -234,19 +195,9 @@ impl Privkey {
   /// let tweaked_key_result = key.tweak_add(&tweak_value);
   /// ```
   pub fn tweak_add(&self, data: &[u8]) -> Result<Privkey, CfdError> {
-    let result: Result<Privkey, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(&self.key));
-    let tweak_obj = CString::new(hex_from_bytes(data));
-    if hex_obj.is_err() || tweak_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let privkey = hex_obj.unwrap();
-    let tweak = tweak_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
+    let tweak = alloc_c_string(&hex_from_bytes(data))?;
+    let handle = ErrorHandle::new()?;
     let mut tweak_privkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdPrivkeyTweakAdd(
@@ -256,17 +207,14 @@ impl Privkey {
         &mut tweak_privkey,
       )
     };
-    if error_code == 0 {
-      let tweaked = unsafe { collect_cstring_and_free(tweak_privkey) };
-      if let Err(ret) = tweaked {
-        result = Err(ret);
-      } else {
-        let tweaked_privkey = byte_from_hex_unsafe(&tweaked.unwrap());
-        result = Privkey::from_slice(&tweaked_privkey);
+    let result = match error_code {
+      0 => {
+        let tweaked = unsafe { collect_cstring_and_free(tweak_privkey) }?;
+        let tweaked_privkey = byte_from_hex_unsafe(&tweaked);
+        Privkey::from_slice(&tweaked_privkey)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -286,19 +234,9 @@ impl Privkey {
   /// let tweaked_key_result = key.tweak_mul(&tweak_value);
   /// ```
   pub fn tweak_mul(&self, data: &[u8]) -> Result<Privkey, CfdError> {
-    let result: Result<Privkey, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(&self.key));
-    let tweak_obj = CString::new(hex_from_bytes(data));
-    if hex_obj.is_err() || tweak_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let privkey = hex_obj.unwrap();
-    let tweak = tweak_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
+    let tweak = alloc_c_string(&hex_from_bytes(data))?;
+    let handle = ErrorHandle::new()?;
     let mut tweak_privkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdPrivkeyTweakMul(
@@ -308,17 +246,14 @@ impl Privkey {
         &mut tweak_privkey,
       )
     };
-    if error_code == 0 {
-      let tweaked = unsafe { collect_cstring_and_free(tweak_privkey) };
-      if let Err(ret) = tweaked {
-        result = Err(ret);
-      } else {
-        let tweaked_privkey = byte_from_hex_unsafe(&tweaked.unwrap());
-        result = Privkey::from_slice(&tweaked_privkey);
+    let result = match error_code {
+      0 => {
+        let tweaked = unsafe { collect_cstring_and_free(tweak_privkey) }?;
+        let tweaked_privkey = byte_from_hex_unsafe(&tweaked);
+        Privkey::from_slice(&tweaked_privkey)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -334,31 +269,19 @@ impl Privkey {
   /// let key_result = key.negate();
   /// ```
   pub fn negate(&self) -> Result<Privkey, CfdError> {
-    let result: Result<Privkey, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(&self.key));
-    if hex_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let privkey = hex_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
+    let handle = ErrorHandle::new()?;
     let mut negate_privkey: *mut c_char = ptr::null_mut();
     let error_code =
       unsafe { CfdNegatePrivkey(handle.as_handle(), privkey.as_ptr(), &mut negate_privkey) };
-    if error_code == 0 {
-      let negated = unsafe { collect_cstring_and_free(negate_privkey) };
-      if let Err(ret) = negated {
-        result = Err(ret);
-      } else {
-        let negated_privkey = byte_from_hex_unsafe(&negated.unwrap());
-        result = Privkey::from_slice(&negated_privkey);
+    let result = match error_code {
+      0 => {
+        let negated = unsafe { collect_cstring_and_free(negate_privkey) }?;
+        let negated_privkey = byte_from_hex_unsafe(&negated);
+        Privkey::from_slice(&negated_privkey)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -430,39 +353,27 @@ impl Privkey {
     network_type: &Network,
     is_compressed: bool,
   ) -> Result<String, CfdError> {
-    if self.wif.is_empty() {
-      let result: Result<String, CfdError>;
-
-      let hex_obj = CString::new(self.to_hex());
-      if hex_obj.is_err() {
-        return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-      }
-      let privkey = hex_obj.unwrap();
-      let err_handle = ErrorHandle::new();
-      if let Err(err_handle) = err_handle {
-        return Err(err_handle);
-      }
-      let handle = err_handle.unwrap();
-      let mut wif: *mut c_char = ptr::null_mut();
-      let error_code = unsafe {
-        CfdGetPrivkeyWif(
-          handle.as_handle(),
-          privkey.as_ptr(),
-          network_type.to_c_value(),
-          is_compressed,
-          &mut wif,
-        )
-      };
-      if error_code == 0 {
-        result = unsafe { collect_cstring_and_free(wif) };
-      } else {
-        result = Err(handle.get_error(error_code));
-      }
-      handle.free_handle();
-      result
-    } else {
-      Ok(self.to_wif().to_string())
+    if !self.wif.is_empty() {
+      return Ok(self.to_wif().to_string());
     }
+    let privkey = alloc_c_string(&self.to_hex())?;
+    let handle = ErrorHandle::new()?;
+    let mut wif: *mut c_char = ptr::null_mut();
+    let error_code = unsafe {
+      CfdGetPrivkeyWif(
+        handle.as_handle(),
+        privkey.as_ptr(),
+        network_type.to_c_value(),
+        is_compressed,
+        &mut wif,
+      )
+    };
+    let result = match error_code {
+      0 => unsafe { collect_cstring_and_free(wif) },
+      _ => Err(handle.get_error(error_code)),
+    };
+    handle.free_handle();
+    result
   }
 
   /// Get a public key from this private key.
@@ -496,17 +407,8 @@ impl Privkey {
     key: &[u8; PRIVKEY_SIZE],
     is_compressed: bool,
   ) -> Result<Pubkey, CfdError> {
-    let result: Result<Pubkey, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(key));
-    if hex_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let privkey = hex_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let privkey = alloc_c_string(&hex_from_bytes(key))?;
+    let handle = ErrorHandle::new()?;
     let wif: *const i8 = ptr::null();
     let mut pubkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
@@ -518,16 +420,13 @@ impl Privkey {
         &mut pubkey,
       )
     };
-    if error_code == 0 {
-      let pubkey_obj = unsafe { collect_cstring_and_free(pubkey) };
-      if let Err(ret) = pubkey_obj {
-        result = Err(ret);
-      } else {
-        result = Pubkey::from_vec(byte_from_hex_unsafe(&pubkey_obj.unwrap()));
+    let result = match error_code {
+      0 => {
+        let pubkey_obj = unsafe { collect_cstring_and_free(pubkey) }?;
+        Pubkey::from_vec(byte_from_hex_unsafe(&pubkey_obj))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -552,19 +451,9 @@ impl Privkey {
     sighash: &[u8],
     has_grind_r: bool,
   ) -> Result<SignParameter, CfdError> {
-    let result: Result<SignParameter, CfdError>;
-    let privkey_obj = CString::new(hex_from_bytes(&self.key));
-    let hex_obj = CString::new(hex_from_bytes(sighash));
-    if hex_obj.is_err() || privkey_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let signature_hash = hex_obj.unwrap();
-    let privkey = privkey_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let signature_hash = alloc_c_string(&hex_from_bytes(sighash))?;
+    let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
+    let handle = ErrorHandle::new()?;
     let wif: *const i8 = ptr::null();
     let network_type: c_int = 0;
     let mut signature_hex: *mut c_char = ptr::null_mut();
@@ -579,19 +468,15 @@ impl Privkey {
         &mut signature_hex,
       )
     };
-    if error_code == 0 {
-      let signature = unsafe { collect_cstring_and_free(signature_hex) };
-      if let Err(ret) = signature {
-        result = Err(ret);
-      } else {
-        let signature_bytes = byte_from_hex_unsafe(&signature.unwrap());
-        let mut sign_param = SignParameter::from_vec(signature_bytes);
-        sign_param = sign_param.set_use_der_encode(&SigHashType::All);
-        result = Ok(sign_param);
+    let result = match error_code {
+      0 => {
+        let signature = unsafe { collect_cstring_and_free(signature_hex) }?;
+        let signature_bytes = byte_from_hex_unsafe(&signature);
+        let sign_param = SignParameter::from_vec(signature_bytes);
+        Ok(sign_param.set_use_der_encode(&SigHashType::All))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -617,21 +502,10 @@ impl Privkey {
     k_value: &[u8],
     message: &[u8],
   ) -> Result<SignParameter, CfdError> {
-    let result: Result<SignParameter, CfdError>;
-    let privkey_obj = CString::new(self.to_hex());
-    let k_value_obj = CString::new(hex_from_bytes(k_value));
-    let message_obj = CString::new(hex_from_bytes(message));
-    if privkey_obj.is_err() || k_value_obj.is_err() || message_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let privkey = privkey_obj.unwrap();
-    let k_value_str = k_value_obj.unwrap();
-    let message_str = message_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let privkey = alloc_c_string(&self.to_hex())?;
+    let k_value_str = alloc_c_string(&hex_from_bytes(k_value))?;
+    let message_str = alloc_c_string(&hex_from_bytes(message))?;
+    let handle = ErrorHandle::new()?;
     let mut signature_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCalculateSchnorrSignature(
@@ -642,19 +516,15 @@ impl Privkey {
         &mut signature_hex,
       )
     };
-    if error_code == 0 {
-      let signature = unsafe { collect_cstring_and_free(signature_hex) };
-      if let Err(ret) = signature {
-        result = Err(ret);
-      } else {
-        let signature_bytes = byte_from_hex_unsafe(&signature.unwrap());
-        let mut sign_param = SignParameter::from_vec(signature_bytes);
-        sign_param = sign_param.set_use_der_encode(&SigHashType::All);
-        result = Ok(sign_param);
+    let result = match error_code {
+      0 => {
+        let signature = unsafe { collect_cstring_and_free(signature_hex) }?;
+        let signature_bytes = byte_from_hex_unsafe(&signature);
+        let sign_param = SignParameter::from_vec(signature_bytes);
+        Ok(sign_param.set_use_der_encode(&SigHashType::All))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -680,21 +550,10 @@ impl Privkey {
     k_value: &[u8],
     message: &[u8],
   ) -> Result<SignParameter, CfdError> {
-    let result: Result<SignParameter, CfdError>;
-    let privkey_obj = CString::new(self.to_hex());
-    let k_value_obj = CString::new(hex_from_bytes(k_value));
-    let message_obj = CString::new(hex_from_bytes(message));
-    if privkey_obj.is_err() || k_value_obj.is_err() || message_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let privkey = privkey_obj.unwrap();
-    let k_value_str = k_value_obj.unwrap();
-    let message_str = message_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let privkey = alloc_c_string(&self.to_hex())?;
+    let k_value_str = alloc_c_string(&hex_from_bytes(k_value))?;
+    let message_str = alloc_c_string(&hex_from_bytes(message))?;
+    let handle = ErrorHandle::new()?;
     let mut signature_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCalculateSchnorrSignatureWithNonce(
@@ -705,19 +564,15 @@ impl Privkey {
         &mut signature_hex,
       )
     };
-    if error_code == 0 {
-      let signature = unsafe { collect_cstring_and_free(signature_hex) };
-      if let Err(ret) = signature {
-        result = Err(ret);
-      } else {
-        let signature_bytes = byte_from_hex_unsafe(&signature.unwrap());
-        let mut sign_param = SignParameter::from_vec(signature_bytes);
-        sign_param = sign_param.set_use_der_encode(&SigHashType::All);
-        result = Ok(sign_param);
+    let result = match error_code {
+      0 => {
+        let signature = unsafe { collect_cstring_and_free(signature_hex) }?;
+        let signature_bytes = byte_from_hex_unsafe(&signature);
+        let sign_param = SignParameter::from_vec(signature_bytes);
+        Ok(sign_param.set_use_der_encode(&SigHashType::All))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -733,31 +588,18 @@ impl Privkey {
   /// let key_result = key.get_schnorr_public_nonce();
   /// ```
   pub fn get_schnorr_public_nonce(&self) -> Result<Pubkey, CfdError> {
-    let result: Result<Pubkey, CfdError>;
-    let privkey_obj = CString::new(self.to_hex());
-    if privkey_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let privkey = privkey_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let privkey = alloc_c_string(&self.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut nonce: *mut c_char = ptr::null_mut();
     let error_code =
       unsafe { CfdGetSchnorrPublicNonce(handle.as_handle(), privkey.as_ptr(), &mut nonce) };
-    if error_code == 0 {
-      let nonce_obj = unsafe { collect_cstring_and_free(nonce) };
-      if let Err(ret) = nonce_obj {
-        result = Err(ret);
-      } else {
-        let nonce_bytes = byte_from_hex_unsafe(&nonce_obj.unwrap());
-        result = Pubkey::from_slice(&nonce_bytes);
+    let result = match error_code {
+      0 => {
+        let nonce_hex = unsafe { collect_cstring_and_free(nonce) }?;
+        Pubkey::from_str(&nonce_hex)
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -788,27 +630,23 @@ impl fmt::Display for Privkey {
     // fmt::LowerHex::fmt(self, f);
     if self.wif.is_empty() {
       let s = hex::encode(&self.key);
-      write!(f, "{}", s)?;
+      write!(f, "{}", s)
     } else {
       let s = &self.wif;
-      write!(f, "{}", s)?;
+      write!(f, "{}", s)
     }
-    Ok(())
   }
 }
 
 impl FromStr for Privkey {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<Privkey, CfdError> {
-    let wif_result = Privkey::from_wif(text);
-    if let Ok(result) = wif_result {
-      return Ok(result);
-    }
-
-    let result = byte_from_hex(text);
-    match result {
-      Ok(result) => Privkey::from_vec(result),
-      Err(result) => Err(result),
+    match Privkey::from_wif(text) {
+      Ok(result) => Ok(result),
+      _ => match byte_from_hex(text) {
+        Ok(byte_array) => Privkey::from_vec(byte_array),
+        Err(e) => Err(e),
+      },
     }
   }
 }
@@ -817,7 +655,7 @@ impl Default for Privkey {
   fn default() -> Privkey {
     Privkey {
       key: [0; PRIVKEY_SIZE],
-      wif: "".to_string(),
+      wif: String::default(),
       net_type: Network::Mainnet,
       is_compressed: true,
     }
@@ -862,15 +700,12 @@ impl Pubkey {
   pub fn from_vec(key: Vec<u8>) -> Result<Pubkey, CfdError> {
     let len = key.len();
     match len {
-      PUBKEY_COMPRESSED_SIZE | PUBKEY_UNCOMPRESSED_SIZE => {
-        if Pubkey::valid_key(&key) {
-          Ok(Pubkey { key })
-        } else {
-          Err(CfdError::IllegalArgument(
-            "invalid pubkey format.".to_string(),
-          ))
-        }
-      }
+      PUBKEY_COMPRESSED_SIZE | PUBKEY_UNCOMPRESSED_SIZE => match Pubkey::valid_key(&key) {
+        true => Ok(Pubkey { key }),
+        _ => Err(CfdError::IllegalArgument(
+          "invalid pubkey format.".to_string(),
+        )),
+      },
       _ => Err(CfdError::IllegalArgument(
         "invalid pubkey format.".to_string(),
       )),
@@ -921,35 +756,20 @@ impl Pubkey {
   /// let key_result = uncompressed_key.compress();
   /// ```
   pub fn compress(&self) -> Result<Pubkey, CfdError> {
-    let result: Result<Pubkey, CfdError>;
-
-    let hex_obj = CString::new(self.to_hex());
-    if hex_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey = hex_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let pubkey = alloc_c_string(&self.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut compressed_pubkey: *mut c_char = ptr::null_mut();
     let error_code =
       unsafe { CfdCompressPubkey(handle.as_handle(), pubkey.as_ptr(), &mut compressed_pubkey) };
-    if error_code == 0 {
-      let compress_pubkey = unsafe { collect_cstring_and_free(compressed_pubkey) };
-      if let Err(ret) = compress_pubkey {
-        result = Err(ret);
-      } else {
-        let compressed_key = byte_from_hex_unsafe(&compress_pubkey.unwrap());
-        result = Ok(Pubkey {
-          key: compressed_key,
-        });
+    let result = match error_code {
+      0 => {
+        let compress_pubkey = unsafe { collect_cstring_and_free(compressed_pubkey) }?;
+        Ok(Pubkey {
+          key: byte_from_hex_unsafe(&compress_pubkey),
+        })
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -966,19 +786,8 @@ impl Pubkey {
   /// let key_result = compressed_key.compress();
   /// ```
   pub fn uncompress(&self) -> Result<Pubkey, CfdError> {
-    let result: Result<Pubkey, CfdError>;
-
-    let hex_obj = CString::new(self.to_hex());
-    if hex_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey = hex_obj.unwrap();
-
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let pubkey = alloc_c_string(&self.to_hex())?;
+    let handle = ErrorHandle::new()?;
     let mut decompressed_pubkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdUncompressPubkey(
@@ -987,19 +796,15 @@ impl Pubkey {
         &mut decompressed_pubkey,
       )
     };
-    if error_code == 0 {
-      let decompress_pubkey = unsafe { collect_cstring_and_free(decompressed_pubkey) };
-      if let Err(ret) = decompress_pubkey {
-        result = Err(ret);
-      } else {
-        let decompressed_key = byte_from_hex_unsafe(&decompress_pubkey.unwrap());
-        result = Ok(Pubkey {
-          key: decompressed_key,
-        });
+    let result = match error_code {
+      0 => {
+        let decompress_pubkey = unsafe { collect_cstring_and_free(decompressed_pubkey) }?;
+        Ok(Pubkey {
+          key: byte_from_hex_unsafe(&decompress_pubkey),
+        })
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1020,19 +825,9 @@ impl Pubkey {
   /// let tweaked_key_result = key.tweak_add(&tweak_value);
   /// ```
   pub fn tweak_add(&self, data: &[u8]) -> Result<Pubkey, CfdError> {
-    let result: Result<Pubkey, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(&self.key));
-    let tweak_obj = CString::new(hex_from_bytes(data));
-    if hex_obj.is_err() || tweak_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey = hex_obj.unwrap();
-    let tweak = tweak_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let pubkey = alloc_c_string(&hex_from_bytes(&self.key))?;
+    let tweak = alloc_c_string(&hex_from_bytes(data))?;
+    let handle = ErrorHandle::new()?;
     let mut tweak_pubkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdPubkeyTweakAdd(
@@ -1042,17 +837,13 @@ impl Pubkey {
         &mut tweak_pubkey,
       )
     };
-    if error_code == 0 {
-      let tweaked = unsafe { collect_cstring_and_free(tweak_pubkey) };
-      if let Err(ret) = tweaked {
-        result = Err(ret);
-      } else {
-        let tweaked_pubkey = byte_from_hex_unsafe(&tweaked.unwrap());
-        result = Pubkey::from_vec(tweaked_pubkey);
+    let result = match error_code {
+      0 => {
+        let tweaked = unsafe { collect_cstring_and_free(tweak_pubkey) }?;
+        Pubkey::from_vec(byte_from_hex_unsafe(&tweaked))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1073,19 +864,9 @@ impl Pubkey {
   /// let tweaked_key_result = key.tweak_mul(&tweak_value);
   /// ```
   pub fn tweak_mul(&self, data: &[u8]) -> Result<Pubkey, CfdError> {
-    let result: Result<Pubkey, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(&self.key));
-    let tweak_obj = CString::new(hex_from_bytes(data));
-    if hex_obj.is_err() || tweak_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey = hex_obj.unwrap();
-    let tweak = tweak_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let pubkey = alloc_c_string(&hex_from_bytes(&self.key))?;
+    let tweak = alloc_c_string(&hex_from_bytes(data))?;
+    let handle = ErrorHandle::new()?;
     let mut tweak_pubkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdPubkeyTweakMul(
@@ -1095,17 +876,13 @@ impl Pubkey {
         &mut tweak_pubkey,
       )
     };
-    if error_code == 0 {
-      let tweaked = unsafe { collect_cstring_and_free(tweak_pubkey) };
-      if let Err(ret) = tweaked {
-        result = Err(ret);
-      } else {
-        let tweaked_pubkey = byte_from_hex_unsafe(&tweaked.unwrap());
-        result = Pubkey::from_vec(tweaked_pubkey);
+    let result = match error_code {
+      0 => {
+        let tweaked = unsafe { collect_cstring_and_free(tweak_pubkey) }?;
+        Pubkey::from_vec(byte_from_hex_unsafe(&tweaked))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1122,31 +899,18 @@ impl Pubkey {
   /// let key_result = key.negate();
   /// ```
   pub fn negate(&self) -> Result<Pubkey, CfdError> {
-    let result: Result<Pubkey, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(&self.key));
-    if hex_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey = hex_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let pubkey = alloc_c_string(&hex_from_bytes(&self.key))?;
+    let handle = ErrorHandle::new()?;
     let mut negate_pubkey: *mut c_char = ptr::null_mut();
     let error_code =
       unsafe { CfdNegatePubkey(handle.as_handle(), pubkey.as_ptr(), &mut negate_pubkey) };
-    if error_code == 0 {
-      let negated = unsafe { collect_cstring_and_free(negate_pubkey) };
-      if let Err(ret) = negated {
-        result = Err(ret);
-      } else {
-        let negated_pubkey = byte_from_hex_unsafe(&negated.unwrap());
-        result = Pubkey::from_vec(negated_pubkey);
+    let result = match error_code {
+      0 => {
+        let negated = unsafe { collect_cstring_and_free(negate_pubkey) }?;
+        Pubkey::from_vec(byte_from_hex_unsafe(&negated))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1168,64 +932,52 @@ impl Pubkey {
   /// let key_result = Pubkey::combine(&pubkeys);
   /// ```
   pub fn combine(pubkey_list: &[Pubkey]) -> Result<Pubkey, CfdError> {
-    let mut result: Result<Pubkey, CfdError> =
-      Err(CfdError::Unknown("failed to privkey negate".to_string()));
     if pubkey_list.is_empty() {
       return Err(CfdError::IllegalArgument(
         "pubkey list is empty.".to_string(),
       ));
-    }
-    if pubkey_list.len() == 1 {
+    } else if pubkey_list.len() == 1 {
       return Ok(pubkey_list[0].clone());
     }
 
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let handle = ErrorHandle::new()?;
     let mut combine_handle: *mut c_void = ptr::null_mut();
-    let mut error_code: i32 =
+    let error_code: i32 =
       unsafe { CfdInitializeCombinePubkey(handle.as_handle(), &mut combine_handle) };
-    if error_code != 0 {
-      result = Err(handle.get_error(error_code));
-    } else {
-      for pubkey in pubkey_list {
-        let hex_obj = CString::new(hex_from_bytes(&pubkey.key));
-        if hex_obj.is_err() {
-          result = Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-          error_code = 1;
-          break;
-        }
-        let pubkey_hex = hex_obj.unwrap();
-        error_code =
-          unsafe { CfdAddCombinePubkey(handle.as_handle(), combine_handle, pubkey_hex.as_ptr()) };
-        if error_code != 0 {
-          result = Err(handle.get_error(error_code));
-          break;
-        }
-      }
-      if error_code == 0 {
-        let mut combine_pubkey: *mut c_char = ptr::null_mut();
-        error_code = unsafe {
-          CfdFinalizeCombinePubkey(handle.as_handle(), combine_handle, &mut combine_pubkey)
-        };
-        if error_code == 0 {
-          let pubkey = unsafe { collect_cstring_and_free(combine_pubkey) };
-          if let Err(ret) = pubkey {
-            result = Err(ret);
-          } else {
-            let combine_key = byte_from_hex_unsafe(&pubkey.unwrap());
-            result = Pubkey::from_vec(combine_key);
+    let result = match error_code {
+      0 => {
+        let ret = {
+          for pubkey in pubkey_list {
+            let _err = {
+              let pubkey_hex = alloc_c_string(&hex_from_bytes(&pubkey.key))?;
+              let error_code = unsafe {
+                CfdAddCombinePubkey(handle.as_handle(), combine_handle, pubkey_hex.as_ptr())
+              };
+              match error_code {
+                0 => Ok(()),
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
           }
-        } else {
-          result = Err(handle.get_error(error_code));
+          let mut combine_pubkey: *mut c_char = ptr::null_mut();
+          let error_code = unsafe {
+            CfdFinalizeCombinePubkey(handle.as_handle(), combine_handle, &mut combine_pubkey)
+          };
+          match error_code {
+            0 => {
+              let pubkey = unsafe { collect_cstring_and_free(combine_pubkey) }?;
+              Pubkey::from_vec(byte_from_hex_unsafe(&pubkey))
+            }
+            _ => Err(handle.get_error(error_code)),
+          }
+        };
+        unsafe {
+          CfdFreeCombinePubkeyHandle(handle.as_handle(), combine_handle);
         }
+        ret
       }
-      unsafe {
-        CfdFreeCombinePubkeyHandle(handle.as_handle(), combine_handle);
-      }
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1248,21 +1000,10 @@ impl Pubkey {
   /// let is_verify = key.verify_ec_signature(&sighash, &signature).expect("fail");
   /// ```
   pub fn verify_ec_signature(&self, sighash: &[u8], signature: &[u8]) -> Result<bool, CfdError> {
-    let result: Result<bool, CfdError>;
-    let hex_obj = CString::new(self.to_hex());
-    let sighash_obj = CString::new(hex_from_bytes(sighash));
-    let signature_obj = CString::new(hex_from_bytes(signature));
-    if hex_obj.is_err() || sighash_obj.is_err() || signature_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey = hex_obj.unwrap();
-    let sighash_hex = sighash_obj.unwrap();
-    let signature_hex = signature_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let pubkey = alloc_c_string(&self.to_hex())?;
+    let sighash_hex = alloc_c_string(&hex_from_bytes(sighash))?;
+    let signature_hex = alloc_c_string(&hex_from_bytes(signature))?;
+    let handle = ErrorHandle::new()?;
     let error_code = unsafe {
       CfdVerifyEcSignature(
         handle.as_handle(),
@@ -1271,14 +1012,11 @@ impl Pubkey {
         signature_hex.as_ptr(),
       )
     };
-    if error_code == 0 {
-      result = Ok(true);
-    } else if error_code == 7 {
-      // SignVerification
-      result = Ok(false);
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => Ok(true),
+      7 => Ok(false), // SignVerification
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1305,21 +1043,10 @@ impl Pubkey {
     signature: &[u8],
     message: &[u8],
   ) -> Result<bool, CfdError> {
-    let result: Result<bool, CfdError>;
-    let hex_obj = CString::new(self.to_hex());
-    let message_obj = CString::new(hex_from_bytes(message));
-    let signature_obj = CString::new(hex_from_bytes(signature));
-    if hex_obj.is_err() || message_obj.is_err() || signature_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey = hex_obj.unwrap();
-    let message_hex = message_obj.unwrap();
-    let signature_hex = signature_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let pubkey = alloc_c_string(&self.to_hex())?;
+    let message_hex = alloc_c_string(&hex_from_bytes(message))?;
+    let signature_hex = alloc_c_string(&hex_from_bytes(signature))?;
+    let handle = ErrorHandle::new()?;
     let error_code = unsafe {
       CfdVerifySchnorrSignature(
         handle.as_handle(),
@@ -1328,14 +1055,11 @@ impl Pubkey {
         message_hex.as_ptr(),
       )
     };
-    if error_code == 0 {
-      result = Ok(true);
-    } else if error_code == 7 {
-      // SignVerification
-      result = Ok(false);
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => Ok(true),
+      7 => Ok(false), // SignVerification
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1366,23 +1090,11 @@ impl Pubkey {
     signature: &[u8],
     message: &[u8],
   ) -> Result<bool, CfdError> {
-    let result: Result<bool, CfdError>;
-    let hex_obj = CString::new(self.to_hex());
-    let nonce_obj = CString::new(nonce.to_hex());
-    let message_obj = CString::new(hex_from_bytes(message));
-    let signature_obj = CString::new(hex_from_bytes(signature));
-    if hex_obj.is_err() || nonce_obj.is_err() || message_obj.is_err() || signature_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey = hex_obj.unwrap();
-    let nonce_hex = nonce_obj.unwrap();
-    let message_hex = message_obj.unwrap();
-    let signature_hex = signature_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let pubkey = alloc_c_string(&self.to_hex())?;
+    let nonce_hex = alloc_c_string(&nonce.to_hex())?;
+    let message_hex = alloc_c_string(&hex_from_bytes(message))?;
+    let signature_hex = alloc_c_string(&hex_from_bytes(signature))?;
+    let handle = ErrorHandle::new()?;
     let error_code = unsafe {
       CfdVerifySchnorrSignatureWithNonce(
         handle.as_handle(),
@@ -1392,14 +1104,11 @@ impl Pubkey {
         message_hex.as_ptr(),
       )
     };
-    if error_code == 0 {
-      result = Ok(true);
-    } else if error_code == 7 {
-      // SignVerification
-      result = Ok(false);
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+    let result = match error_code {
+      0 => Ok(true),
+      7 => Ok(false), // SignVerification
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1428,21 +1137,10 @@ impl Pubkey {
     oracle_r_point: &Pubkey,
     message: &[u8],
   ) -> Result<Pubkey, CfdError> {
-    let result: Result<Pubkey, CfdError>;
-    let oracle_pubkey_obj = CString::new(self.to_hex());
-    let oracle_r_point_obj = CString::new(oracle_r_point.to_hex());
-    let message_obj = CString::new(hex_from_bytes(message));
-    if oracle_pubkey_obj.is_err() || oracle_r_point_obj.is_err() || oracle_r_point_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let pubkey = oracle_pubkey_obj.unwrap();
-    let oracle_r_point_str = oracle_r_point_obj.unwrap();
-    let message_str = message_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let pubkey = alloc_c_string(&self.to_hex())?;
+    let oracle_r_point_str = alloc_c_string(&oracle_r_point.to_hex())?;
+    let message_str = alloc_c_string(&hex_from_bytes(message))?;
+    let handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdGetSchnorrPubkey(
@@ -1453,17 +1151,13 @@ impl Pubkey {
         &mut output,
       )
     };
-    if error_code == 0 {
-      let output_obj = unsafe { collect_cstring_and_free(output) };
-      if let Err(ret) = output_obj {
-        result = Err(ret);
-      } else {
-        let schnorr_pubkey = byte_from_hex_unsafe(&output_obj.unwrap());
-        result = Pubkey::from_slice(&schnorr_pubkey);
+    let result = match error_code {
+      0 => {
+        let output_obj = unsafe { collect_cstring_and_free(output) }?;
+        Pubkey::from_slice(&byte_from_hex_unsafe(&output_obj))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1485,11 +1179,7 @@ impl Pubkey {
   #[inline]
   pub fn valid_key(key: &[u8]) -> bool {
     let pubkey = Pubkey { key: key.to_vec() };
-    if let Ok(_result) = pubkey.compress() {
-      true
-    } else {
-      false
-    }
+    pubkey.valid()
   }
 
   /// Validate a public key.
@@ -1505,10 +1195,9 @@ impl Pubkey {
   /// ```
   #[inline]
   pub fn valid(&self) -> bool {
-    if let Ok(_result) = self.compress() {
-      true
-    } else {
-      false
+    match self.compress() {
+      Ok(_result) => true,
+      _ => false,
     }
   }
 }
@@ -1516,18 +1205,16 @@ impl Pubkey {
 impl fmt::Display for Pubkey {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let s = hex::encode(&self.key);
-    write!(f, "{}", s)?;
-    Ok(())
+    write!(f, "{}", s)
   }
 }
 
 impl FromStr for Pubkey {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<Pubkey, CfdError> {
-    let result = byte_from_hex(text);
-    match result {
-      Ok(result) => Pubkey::from_vec(result),
-      Err(result) => Err(result),
+    match byte_from_hex(text) {
+      Ok(byte_array) => Pubkey::from_vec(byte_array),
+      Err(e) => Err(e),
     }
   }
 }
@@ -1675,17 +1362,14 @@ impl SigHashType {
 
 impl fmt::Display for SigHashType {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let ret = match *self {
+    let _ = match *self {
       SigHashType::All | SigHashType::AllPlusAnyoneCanPay => write!(f, "sighashType:All"),
       SigHashType::None | SigHashType::NonePlusAnyoneCanPay => write!(f, "sighashType:None"),
       SigHashType::Single | SigHashType::SinglePlusAnyoneCanPay => write!(f, "sighashType:Single"),
-    };
-    if let Err(result) = ret {
-      Err(result)
-    } else if self.is_anyone_can_pay() {
-      write!(f, ", anyoneCanPay")
-    } else {
-      Ok(())
+    }?;
+    match self.is_anyone_can_pay() {
+      true => write!(f, ", anyoneCanPay"),
+      _ => Ok(()),
     }
   }
 }
@@ -1844,17 +1528,8 @@ impl SignParameter {
   /// let normalized_sig_result = signature.normalize();
   /// ```
   pub fn normalize(&self) -> Result<SignParameter, CfdError> {
-    let result: Result<SignParameter, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(&self.data));
-    if hex_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let signature_hex = hex_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
+    let handle = ErrorHandle::new()?;
     let mut normalize_signature: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdNormalizeSignature(
@@ -1863,17 +1538,13 @@ impl SignParameter {
         &mut normalize_signature,
       )
     };
-    if error_code == 0 {
-      let normalized = unsafe { collect_cstring_and_free(normalize_signature) };
-      if let Err(ret) = normalized {
-        result = Err(ret);
-      } else {
-        let signature = byte_from_hex_unsafe(&normalized.unwrap());
-        result = Ok(SignParameter::from_vec(signature));
+    let result = match error_code {
+      0 => {
+        let normalized = unsafe { collect_cstring_and_free(normalize_signature) }?;
+        Ok(SignParameter::from_vec(byte_from_hex_unsafe(&normalized)))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1889,17 +1560,8 @@ impl SignParameter {
   /// let der_encoded_sig_result = signature.to_der_encode();
   /// ```
   pub fn to_der_encode(&self) -> Result<SignParameter, CfdError> {
-    let result: Result<SignParameter, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(&self.data));
-    if hex_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let signature_hex = hex_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
+    let handle = ErrorHandle::new()?;
     let mut der_signature: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdEncodeSignatureByDer(
@@ -1910,17 +1572,13 @@ impl SignParameter {
         &mut der_signature,
       )
     };
-    if error_code == 0 {
-      let der_encoded = unsafe { collect_cstring_and_free(der_signature) };
-      if let Err(ret) = der_encoded {
-        result = Err(ret);
-      } else {
-        let signature = byte_from_hex_unsafe(&der_encoded.unwrap());
-        result = Ok(SignParameter::from_vec(signature));
+    let result = match error_code {
+      0 => {
+        let der_encoded = unsafe { collect_cstring_and_free(der_signature) }?;
+        Ok(SignParameter::from_vec(byte_from_hex_unsafe(&der_encoded)))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -1936,17 +1594,8 @@ impl SignParameter {
   /// let signature_result = der_encoded_sig.to_der_decode();
   /// ```
   pub fn to_der_decode(&self) -> Result<SignParameter, CfdError> {
-    let result: Result<SignParameter, CfdError>;
-    let hex_obj = CString::new(hex_from_bytes(&self.data));
-    if hex_obj.is_err() {
-      return Err(CfdError::MemoryFull("CString::new fail.".to_string()));
-    }
-    let signature_hex = hex_obj.unwrap();
-    let err_handle = ErrorHandle::new();
-    if let Err(err_handle) = err_handle {
-      return Err(err_handle);
-    }
-    let handle = err_handle.unwrap();
+    let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
+    let handle = ErrorHandle::new()?;
     let mut signature: *mut c_char = ptr::null_mut();
     let mut sighash_type_value: c_int = 0;
     let mut is_anyone_can_pay = false;
@@ -1959,20 +1608,15 @@ impl SignParameter {
         &mut is_anyone_can_pay,
       )
     };
-    if error_code == 0 {
-      let der_decoded = unsafe { collect_cstring_and_free(signature) };
-      if let Err(ret) = der_decoded {
-        result = Err(ret);
-      } else {
-        let mut sign_param = SignParameter::from_vec(byte_from_hex_unsafe(&der_decoded.unwrap()));
+    let result = match error_code {
+      0 => {
+        let der_decoded = unsafe { collect_cstring_and_free(signature) }?;
+        let sign_param = SignParameter::from_vec(byte_from_hex_unsafe(&der_decoded));
         let sighash_type = SigHashType::from_c_value(sighash_type_value);
-        sign_param =
-          sign_param.set_signature_hash(&SigHashType::new(&sighash_type, is_anyone_can_pay));
-        result = Ok(sign_param);
+        Ok(sign_param.set_signature_hash(&SigHashType::new(&sighash_type, is_anyone_can_pay)))
       }
-    } else {
-      result = Err(handle.get_error(error_code));
-    }
+      _ => Err(handle.get_error(error_code)),
+    };
     handle.free_handle();
     result
   }
@@ -2001,10 +1645,9 @@ impl fmt::Display for SignParameter {
 impl FromStr for SignParameter {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<SignParameter, CfdError> {
-    let result = byte_from_hex(text);
-    match result {
-      Ok(result) => Ok(SignParameter::from_vec(result)),
-      Err(result) => Err(result),
+    match byte_from_hex(text) {
+      Ok(byte_array) => Ok(SignParameter::from_vec(byte_array)),
+      Err(e) => Err(e),
     }
   }
 }
