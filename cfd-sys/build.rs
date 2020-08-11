@@ -8,12 +8,9 @@ fn main() {
   let _build_type = env::var("PROFILE").unwrap();
   let release_name = "release";
 
-  let release_type = "Release";
-  let debug_type = "Debug";
-  let cmake_build_type = if _build_type == release_name {
-    release_type
-  } else {
-    debug_type
+  let cmake_build_type = match _build_type == release_name {
+    true => "Release",
+    _ => "Debug",
   };
 
   let separator_slash = "/";
@@ -30,18 +27,9 @@ fn main() {
   let static_pkg_ret = pkg_config::Config::new().statik(true).probe("cfd");
   if let Ok(pkg) = static_pkg_ret {
     // already printed "cargo:rustc-link-lib"
-    let r1 = pkg_config::Config::new().statik(true).probe("cfd-core");
-    let r2 = pkg_config::Config::new().statik(true).probe("wally");
-    let r3 = pkg_config::Config::new().statik(true).probe("univalue");
-    if let Err(e) = r1 {
-      println!("cargo:warning=pkg-config warn: cfd-core. Err={}", e);
-    }
-    if let Err(e) = r2 {
-      println!("cargo:warning=pkg-config warn: wally. Err={}", e);
-    }
-    if let Err(e) = r3 {
-      println!("cargo:warning=pkg-config error: univalue. Err={}", e);
-    }
+    check_pkg_config("cfd-core");
+    check_pkg_config("wally");
+    check_pkg_config("univalue");
     let is_static: bool = {
       let lib_name = "libcfd.a";
       let system_roots = if cfg!(target_os = "macos") {
@@ -75,10 +63,6 @@ fn main() {
       separator,
       cmake_build_type
     );
-    // println!(
-    //   "cargo:rustc-link-search=native={}",
-    //   dst.display(),
-    // );
     println!("cargo:rustc-link-lib=static=cfd");
     println!("cargo:rustc-link-lib=static=cfdcore");
     println!("cargo:rustc-link-lib=static=wally");
@@ -90,9 +74,14 @@ fn main() {
   }
   if _os_type == os_mac {
     println!("cargo:rustc-link-lib=dylib=c++");
-  //println!("cargo:rustc-flags=-l dylib=c++");
   } else if _os_type != os_windows {
     println!("cargo:rustc-link-lib=dylib=stdc++");
-    //println!("cargo:rustc-flags=-l dylib=stdc++");
+  }
+}
+
+fn check_pkg_config(target_name: &str) {
+  let result = pkg_config::Config::new().statik(true).probe(target_name);
+  if let Err(e) = result {
+    println!("cargo:warning=pkg-config error: {}. Err={}", target_name, e);
   }
 }
