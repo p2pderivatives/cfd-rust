@@ -51,7 +51,7 @@ impl HashType {
     }
   }
 
-  pub fn get_address_type(&self) -> AddressType {
+  pub fn to_address_type(&self) -> AddressType {
     match self {
       HashType::P2pkh => AddressType::P2pkhAddress,
       HashType::P2sh => AddressType::P2shAddress,
@@ -239,7 +239,7 @@ impl Address {
             address: address.to_string(),
             locking_script: script.unwrap(),
             network_type: Network::from_c_value(network_type_c),
-            address_type: hash_type.get_address_type(),
+            address_type: hash_type.to_address_type(),
             p2sh_wrapped_segwit_script: Script::default(),
             witness_version: hash_type.get_witness_version(),
           };
@@ -581,7 +581,7 @@ impl Address {
             address: addr_obj.unwrap(),
             locking_script: addr_locking_script.unwrap(),
             network_type: Network::from_c_value(network_type),
-            address_type: hash_type_obj.get_address_type(),
+            address_type: hash_type_obj.to_address_type(),
             p2sh_wrapped_segwit_script: segwit_script.unwrap(),
             witness_version: hash_type_obj.get_witness_version(),
           };
