@@ -670,7 +670,7 @@ impl Descriptor {
       unsafe {
         CfdFreeDescriptorHandle(handle.as_handle(), descriptor_handle);
       }
-      if list.len() == (max_num as usize) {
+      if list.len() == ((max_num + 1) as usize) {
         result = Ok(Descriptor::analyze_list(descriptor, &list));
       }
     } else {
