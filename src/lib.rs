@@ -40,6 +40,7 @@ pub use hdwallet::XPRIV_MAINNET_VERSION;
 pub use hdwallet::XPRIV_TESTNET_VERSION;
 pub use hdwallet::XPUB_MAINNET_VERSION;
 pub use hdwallet::XPUB_TESTNET_VERSION;
+pub use key::KeyPair;
 pub use key::Privkey;
 pub use key::Pubkey;
 pub use key::SigHashType;

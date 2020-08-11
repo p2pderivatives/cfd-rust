@@ -1547,15 +1547,33 @@ pub struct KeyPair {
 }
 
 impl KeyPair {
+  /// Set a key pair.
+  ///
+  /// # Arguments
+  /// * `privkey` - A private key.
+  /// * `pubkey` - A public key.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Privkey;
+  /// use cfd_rust::KeyPair;
+  /// let bytes = [1; 32];
+  /// let key = Privkey::from_slice(&bytes).expect("fail");
+  /// let pubkey = key.get_pubkey().expect("fail");
+  /// let key_pair = KeyPair::new(&key, &pubkey);
+  /// ```
   pub fn new(privkey: &Privkey, pubkey: &Pubkey) -> KeyPair {
     KeyPair {
       privkey: privkey.clone(),
       pubkey: pubkey.clone(),
     }
   }
+
   pub fn to_privkey(&self) -> &Privkey {
     &self.privkey
   }
+
   pub fn to_pubkey(&self) -> &Pubkey {
     &self.pubkey
   }
@@ -1588,6 +1606,18 @@ pub enum SigHashType {
 }
 
 impl SigHashType {
+  /// Create a new instance.
+  ///
+  /// # Arguments
+  /// * `sighash_type` - A base sighash type.
+  /// * `anyone_can_pay` - An anyone can pay flag.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SigHashType;
+  /// let all_anyone_can_pay = SigHashType::new(&SigHashType::All, true);
+  /// ```
   #[inline]
   pub fn new(sighash_type: &SigHashType, anyone_can_pay: bool) -> SigHashType {
     if anyone_can_pay {
@@ -1607,6 +1637,15 @@ impl SigHashType {
     }
   }
 
+  /// Get an anyone can pay flag.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SigHashType;
+  /// let hash_type = SigHashType::NonePlusAnyoneCanPay;
+  /// let anyone_can_pay = hash_type.is_anyone_can_pay();
+  /// ```
   #[inline]
   pub fn is_anyone_can_pay(&self) -> bool {
     match self {
@@ -1616,6 +1655,7 @@ impl SigHashType {
       SigHashType::All | SigHashType::None | SigHashType::Single => false,
     }
   }
+
   pub(in crate) fn from_c_value(sighash_type: c_int) -> SigHashType {
     match sighash_type {
       1 => SigHashType::All,
@@ -1662,6 +1702,18 @@ pub struct SignParameter {
 }
 
 impl SignParameter {
+  /// Generate from slice.
+  ///
+  /// # Arguments
+  /// * `data` - A byte data used for sign.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SignParameter;
+  /// let bytes = [1; 32];
+  /// let param = SignParameter::from_slice(&bytes);
+  /// ```
   pub fn from_slice(data: &[u8]) -> SignParameter {
     SignParameter {
       data: data.to_vec(),
@@ -1671,22 +1723,81 @@ impl SignParameter {
     }
   }
 
+  /// Generate from vector.
+  ///
+  /// # Arguments
+  /// * `data` - A byte data used for sign.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SignParameter;
+  /// let bytes = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
+  /// let param = SignParameter::from_vec(bytes);
+  /// ```
   pub fn from_vec(data: Vec<u8>) -> SignParameter {
     SignParameter::from_slice(&data)
   }
 
+  /// Set a sighash type.
+  ///
+  /// # Arguments
+  /// * `sighash_type` - A signature hash type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SignParameter;
+  /// use cfd_rust::SigHashType;
+  /// let bytes = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
+  /// let param = SignParameter::from_vec(bytes)
+  ///     .set_signature_hash(&SigHashType::All);
+  /// ```
   #[inline]
   pub fn set_signature_hash(mut self, sighash_type: &SigHashType) -> SignParameter {
     self.sighash_type = *sighash_type;
     self
   }
 
+  /// Set a sighash type and der encode flag.
+  ///
+  /// # Arguments
+  /// * `sighash_type` - A signature hash type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SignParameter;
+  /// use cfd_rust::SigHashType;
+  /// let bytes = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
+  /// let param = SignParameter::from_vec(bytes)
+  ///     .set_use_der_encode(&SigHashType::All);
+  /// ```
   #[inline]
   pub fn set_use_der_encode(mut self, sighash_type: &SigHashType) -> SignParameter {
     self.use_der_encode = true;
     self.set_signature_hash(&sighash_type)
   }
 
+  /// Set a related pubkey. Used to sort multisig signatures.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A public key.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SignParameter;
+  /// use cfd_rust::SigHashType;
+  /// use cfd_rust::Pubkey;
+  /// use std::str::FromStr;
+  /// let pubkey_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let pubkey = Pubkey::from_str(pubkey_str).expect("fail");
+  /// let bytes = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
+  /// let param = SignParameter::from_vec(bytes)
+  ///     .set_use_der_encode(&SigHashType::All)
+  ///     .set_related_pubkey(&pubkey);
+  /// ```
   #[inline]
   pub fn set_related_pubkey(mut self, pubkey: &Pubkey) -> SignParameter {
     self.pubkey = pubkey.clone();
@@ -1723,6 +1834,16 @@ impl SignParameter {
     &self.pubkey
   }
 
+  /// Get a normalized signature.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SignParameter;
+  /// let bytes = [1; 64];
+  /// let signature = SignParameter::from_slice(&bytes);
+  /// let normalized_sig_result = signature.normalize();
+  /// ```
   pub fn normalize(&self) -> Result<SignParameter, CfdError> {
     let result: Result<SignParameter, CfdError>;
     let hex_obj = CString::new(hex_from_bytes(&self.data));
@@ -1758,6 +1879,16 @@ impl SignParameter {
     result
   }
 
+  /// Get a der-encoded signature.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SignParameter;
+  /// let bytes = [1; 64];
+  /// let signature = SignParameter::from_slice(&bytes);
+  /// let der_encoded_sig_result = signature.to_der_encode();
+  /// ```
   pub fn to_der_encode(&self) -> Result<SignParameter, CfdError> {
     let result: Result<SignParameter, CfdError>;
     let hex_obj = CString::new(hex_from_bytes(&self.data));
@@ -1795,6 +1926,16 @@ impl SignParameter {
     result
   }
 
+  /// Get a der-encoded signature.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SignParameter;
+  /// let bytes = [1; 72];
+  /// let der_encoded_sig = SignParameter::from_slice(&bytes);
+  /// let signature_result = der_encoded_sig.to_der_decode();
+  /// ```
   pub fn to_der_decode(&self) -> Result<SignParameter, CfdError> {
     let result: Result<SignParameter, CfdError>;
     let hex_obj = CString::new(hex_from_bytes(&self.data));
