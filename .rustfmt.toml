@@ -1,0 +1,16 @@
+edition = "2018"
+unstable_features = true
+unstable_options = true
+max_width = 100
+array_width = 60
+attr_fn_like_width = 70
+blank_lines_lower_bound = 1
+blank_lines_upper_bound = 1
+chain_width = 60
+comment_width = 80
+error_on_line_overflow = true
+error_on_unformatted = true
+hard_tabs = false
+hide_parse_errors = true
+newline_style = "Unix"
+tab_spaces = 2
