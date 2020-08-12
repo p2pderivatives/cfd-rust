@@ -54,12 +54,16 @@ Using pkg-config, build is quickly.
 
 ```Shell
 # The described version is an example. If you use it, please rewrite it to an appropriate version.
-wget https://github.com/cryptogarageinc/cfd/releases/download/v0.1.13/cfd-v0.1.13-osx-xcode9.4_x86_64-static.zip
+wget https://github.com/cryptogarageinc/cfd-rust/releases/download/v0.0.1/cfd-sys-v0.0.1-osx-xcode9.4-static_x86_64.zip
 # decompress
-sudo unzip -d / cfd-v0.1.13-osx-xcode9.4_x86_64-static.zip
+sudo unzip -d / cfd-sys-v0.0.1-osx-xcode9.4-static_x86_64.zip
 # build
 cargo build
 ```
+
+### Prepare cfd native library from releases asset (Windows)
+
+T.B.D. (plan to use cmake's features)
 
 ---
 
