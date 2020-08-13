@@ -19,12 +19,17 @@ use self::cfd_sys::{
   CfdGetPubkeyFromExtkey, CfdInitializeMnemonicWordList,
 };
 
+/// xpriv mainnet version
 pub const XPRIV_MAINNET_VERSION: &str = "0488ade4";
+/// xpriv testnet version
 pub const XPRIV_TESTNET_VERSION: &str = "04358394";
+/// xpub mainnet version
 pub const XPUB_MAINNET_VERSION: &str = "0488b21e";
+/// xpub testnet version
 pub const XPUB_TESTNET_VERSION: &str = "043587cf";
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+/// An enumeration of extkey type.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(in crate) enum ExtKeyType {
   Privkey,
   Pubkey,
@@ -48,6 +53,7 @@ impl fmt::Display for ExtKeyType {
   }
 }
 
+/// A container that stores a extkey.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ExtKey {
   extkey: String,
@@ -295,6 +301,7 @@ impl Default for ExtKey {
   }
 }
 
+/// A container that stores a ext privkey.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ExtPrivkey {
   extkey: ExtKey,
@@ -302,6 +309,19 @@ pub struct ExtPrivkey {
 }
 
 impl ExtPrivkey {
+  /// Generate from a seed.
+  ///
+  /// # Arguments
+  /// * `seed` - A seed byte data.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{ExtPrivkey, Network};
+  /// let seed = [1; 32];
+  /// let extkey = ExtPrivkey::from_seed(&seed, &Network::Testnet).expect("Fail");
+  /// ```
   pub fn from_seed(seed: &[u8], network_type: &Network) -> Result<ExtPrivkey, CfdError> {
     let seed_str = alloc_c_string(&hex_from_bytes(seed))?;
     let handle = ErrorHandle::new()?;
@@ -326,6 +346,18 @@ impl ExtPrivkey {
     result
   }
 
+  /// Parse from an ext privkey string.
+  ///
+  /// # Arguments
+  /// * `key` - An ext privkey string.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPrivkey;
+  /// let key = "xprv9zt1onyw8BdEf7SQ6wUVH3bQQdGD9iy9QzXveQQRhX7i5iUN7jZgLbqFEe491LfjozztYa6bJAGZ65GmDCNcbjMdjZcgmdisPJwVjcfcDhV";
+  /// let extkey = ExtPrivkey::new(key).expect("Fail");
+  /// ```
   pub fn new(extkey: &str) -> Result<ExtPrivkey, CfdError> {
     let extkey_ret = ExtKey::from_extkey(extkey);
     if let Err(ret) = extkey_ret {
@@ -339,6 +371,20 @@ impl ExtPrivkey {
     Ok(ExtPrivkey { extkey, privkey })
   }
 
+  /// Derive key.
+  ///
+  /// # Arguments
+  /// * `child_number` - A child number for derive.
+  /// * `hardened` - A hardened flag.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPrivkey;
+  /// let key = "xprv9zt1onyw8BdEf7SQ6wUVH3bQQdGD9iy9QzXveQQRhX7i5iUN7jZgLbqFEe491LfjozztYa6bJAGZ65GmDCNcbjMdjZcgmdisPJwVjcfcDhV";
+  /// let extkey = ExtPrivkey::new(key).expect("Fail");
+  /// let derive_key = extkey.derive_from_number(2, true).expect("Fail");
+  /// ```
   pub fn derive_from_number(
     &self,
     child_number: u32,
@@ -350,6 +396,20 @@ impl ExtPrivkey {
     ExtPrivkey::from_key(extkey)
   }
 
+  /// Derive from number list.
+  ///
+  /// # Arguments
+  /// * `number_list` - Multiple child number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPrivkey;
+  /// let key = "xprv9zt1onyw8BdEf7SQ6wUVH3bQQdGD9iy9QzXveQQRhX7i5iUN7jZgLbqFEe491LfjozztYa6bJAGZ65GmDCNcbjMdjZcgmdisPJwVjcfcDhV";
+  /// let extkey = ExtPrivkey::new(key).expect("Fail");
+  /// let number_list = [0x80000002, 1];
+  /// let derive_key = extkey.derive_from_number_list(&number_list).expect("Fail");
+  /// ```
   pub fn derive_from_number_list(&self, number_list: &[u32]) -> Result<ExtPrivkey, CfdError> {
     let extkey = self
       .extkey
@@ -357,11 +417,35 @@ impl ExtPrivkey {
     ExtPrivkey::from_key(extkey)
   }
 
+  /// Derive from number path string.
+  ///
+  /// # Arguments
+  /// * `path` - child number path (bip32 path).
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPrivkey;
+  /// let key = "xprv9zt1onyw8BdEf7SQ6wUVH3bQQdGD9iy9QzXveQQRhX7i5iUN7jZgLbqFEe491LfjozztYa6bJAGZ65GmDCNcbjMdjZcgmdisPJwVjcfcDhV";
+  /// let extkey = ExtPrivkey::new(key).expect("Fail");
+  /// let path = "2'/1";
+  /// let derive_key = extkey.derive_from_path(path).expect("Fail");
+  /// ```
   pub fn derive_from_path(&self, path: &str) -> Result<ExtPrivkey, CfdError> {
     let extkey = self.extkey.derive_from_path(path, &ExtKeyType::Privkey)?;
     ExtPrivkey::from_key(extkey)
   }
 
+  /// Get ext pubkey.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPrivkey;
+  /// let key = "xprv9zt1onyw8BdEf7SQ6wUVH3bQQdGD9iy9QzXveQQRhX7i5iUN7jZgLbqFEe491LfjozztYa6bJAGZ65GmDCNcbjMdjZcgmdisPJwVjcfcDhV";
+  /// let extkey = ExtPrivkey::new(key).expect("Fail");
+  /// let ext_pubkey = extkey.get_ext_pubkey().expect("Fail");
+  /// ```
   pub fn get_ext_pubkey(&self) -> Result<ExtPubkey, CfdError> {
     let extkey_str = alloc_c_string(&self.extkey.to_str())?;
     let handle = ErrorHandle::new()?;
@@ -385,6 +469,20 @@ impl ExtPrivkey {
     result
   }
 
+  /// Derive pubkey.
+  ///
+  /// # Arguments
+  /// * `child_number` - A child number for derive.
+  /// * `hardened` - A hardened flag.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPrivkey;
+  /// let key = "xprv9zt1onyw8BdEf7SQ6wUVH3bQQdGD9iy9QzXveQQRhX7i5iUN7jZgLbqFEe491LfjozztYa6bJAGZ65GmDCNcbjMdjZcgmdisPJwVjcfcDhV";
+  /// let extkey = ExtPrivkey::new(key).expect("Fail");
+  /// let derive_pubkey = extkey.derive_pubkey_from_number(2, true).expect("Fail");
+  /// ```
   pub fn derive_pubkey_from_number(
     &self,
     child_number: u32,
@@ -397,6 +495,20 @@ impl ExtPrivkey {
     ext_privkey.get_ext_pubkey()
   }
 
+  /// Derive pubkey from number list.
+  ///
+  /// # Arguments
+  /// * `number_list` - Multiple child number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPrivkey;
+  /// let key = "xprv9zt1onyw8BdEf7SQ6wUVH3bQQdGD9iy9QzXveQQRhX7i5iUN7jZgLbqFEe491LfjozztYa6bJAGZ65GmDCNcbjMdjZcgmdisPJwVjcfcDhV";
+  /// let extkey = ExtPrivkey::new(key).expect("Fail");
+  /// let number_list = [0x80000002, 1];
+  /// let derive_pubkey = extkey.derive_pubkey_from_number_list(&number_list).expect("Fail");
+  /// ```
   pub fn derive_pubkey_from_number_list(&self, number_list: &[u32]) -> Result<ExtPubkey, CfdError> {
     let extkey = self
       .extkey
@@ -405,6 +517,20 @@ impl ExtPrivkey {
     ext_privkey.get_ext_pubkey()
   }
 
+  /// Derive pubkey from number path string.
+  ///
+  /// # Arguments
+  /// * `path` - child number path (bip32 path).
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPrivkey;
+  /// let key = "xprv9zt1onyw8BdEf7SQ6wUVH3bQQdGD9iy9QzXveQQRhX7i5iUN7jZgLbqFEe491LfjozztYa6bJAGZ65GmDCNcbjMdjZcgmdisPJwVjcfcDhV";
+  /// let extkey = ExtPrivkey::new(key).expect("Fail");
+  /// let path = "2'/1";
+  /// let derive_pubkey = extkey.derive_pubkey_from_path(path).expect("Fail");
+  /// ```
   pub fn derive_pubkey_from_path(&self, path: &str) -> Result<ExtPubkey, CfdError> {
     let extkey = self.extkey.derive_from_path(path, &ExtKeyType::Privkey)?;
     let ext_privkey = ExtPrivkey::from_key(extkey)?;
@@ -479,6 +605,7 @@ impl Default for ExtPrivkey {
   }
 }
 
+/// A container that stores a ext pubkey.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ExtPubkey {
   extkey: ExtKey,
@@ -486,11 +613,47 @@ pub struct ExtPubkey {
 }
 
 impl ExtPubkey {
+  /// Parse from an ext pubkey string.
+  ///
+  /// # Arguments
+  /// * `key` - An ext pubkey string.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPubkey;
+  /// let key = "xpub661MyMwAqRbcGB88KaFbLGiYAat55APKhtWg4uYMkXAmfuSTbq2QYsn9sKJCj1YqZPafsboef4h4YbXXhNhPwMbkHTpkf3zLhx7HvFw1NDy";
+  /// let extkey = ExtPubkey::new(key).expect("Fail");
+  /// ```
   pub fn new(extkey: &str) -> Result<ExtPubkey, CfdError> {
     let extkey_ret = ExtKey::from_extkey(extkey)?;
     ExtPubkey::from_key(extkey_ret)
   }
 
+  /// Create ext pubkey from parent pubkey.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  /// * `parent_pubkey` - A parent pubkey.
+  /// * `pubkey` - A current pubkey.
+  /// * `chain_code` - A chain code.
+  /// * `depth` - A depth.
+  /// * `child_number` - A current child number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{ExtPubkey, Pubkey, ByteData, Network};
+  /// use std::str::FromStr;
+  /// let extkey = ExtPubkey::from_parent_info(
+  ///   Network::Testnet,
+  ///   Pubkey::from_str("02ca30dbb25a2cf96344a04ae2144fb28a17f006c34cfb973b9f21623db27c5cd3").expect("Fail"),
+  ///   Pubkey::from_str("03f1e767c0555ce0105b2a76d0f8b19b6d33a147f82f75a05c4c09580c39694fd3").expect("Fail"),
+  ///   ByteData::from_str("839fb0d66f1887db167cdc530ab98e871d8b017ebcb198568874b6c98516364e").expect("Fail"),
+  ///   4,
+  ///   44,
+  /// ).expect("Fail");
+  /// ```
   pub fn from_parent_info(
     network_type: Network,
     parent_pubkey: Pubkey,
@@ -510,6 +673,30 @@ impl ExtPubkey {
     )
   }
 
+  /// Create ext pubkey from parent pubkey fingerprint.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  /// * `fingerprint` - A parent pubkey fingerprint.
+  /// * `pubkey` - A current pubkey.
+  /// * `chain_code` - A chain code.
+  /// * `depth` - A depth.
+  /// * `child_number` - A current child number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{ExtPubkey, Pubkey, ByteData, Network};
+  /// use std::str::FromStr;
+  /// let extkey = ExtPubkey::create(
+  ///   Network::Testnet,
+  ///   ByteData::from_str("a53a8ff3").expect("Fail"),
+  ///   Pubkey::from_str("03f1e767c0555ce0105b2a76d0f8b19b6d33a147f82f75a05c4c09580c39694fd3").expect("Fail"),
+  ///   ByteData::from_str("839fb0d66f1887db167cdc530ab98e871d8b017ebcb198568874b6c98516364e").expect("Fail"),
+  ///   4,
+  ///   44,
+  /// ).expect("Fail");
+  /// ```
   pub fn create(
     network_type: Network,
     fingerprint: ByteData,
@@ -595,16 +782,40 @@ impl ExtPubkey {
     Ok(ExtPubkey { extkey, pubkey })
   }
 
-  pub fn derive_from_number(
-    &self,
-    child_number: u32,
-    hardened: bool,
-  ) -> Result<ExtPubkey, CfdError> {
+  /// Derive pubkey.
+  ///
+  /// # Arguments
+  /// * `child_number` - A child number for derive.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPubkey;
+  /// let key = "xpub661MyMwAqRbcGB88KaFbLGiYAat55APKhtWg4uYMkXAmfuSTbq2QYsn9sKJCj1YqZPafsboef4h4YbXXhNhPwMbkHTpkf3zLhx7HvFw1NDy";
+  /// let extkey = ExtPubkey::new(key).expect("Fail");
+  /// let derive_pubkey = extkey.derive_from_number(2).expect("Fail");
+  /// ```
+  pub fn derive_from_number(&self, child_number: u32) -> Result<ExtPubkey, CfdError> {
     let extkey = self
       .extkey
-      .derive_from_number(child_number, hardened, &ExtKeyType::Pubkey)?;
+      .derive_from_number(child_number, false, &ExtKeyType::Pubkey)?;
     ExtPubkey::from_key(extkey)
   }
+
+  /// Derive pubkey from number list.
+  ///
+  /// # Arguments
+  /// * `number_list` - Multiple child number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPubkey;
+  /// let key = "xpub661MyMwAqRbcGB88KaFbLGiYAat55APKhtWg4uYMkXAmfuSTbq2QYsn9sKJCj1YqZPafsboef4h4YbXXhNhPwMbkHTpkf3zLhx7HvFw1NDy";
+  /// let extkey = ExtPubkey::new(key).expect("Fail");
+  /// let number_list = [2, 1];
+  /// let derive_pubkey = extkey.derive_from_number_list(&number_list).expect("Fail");
+  /// ```
   pub fn derive_from_number_list(&self, number_list: &[u32]) -> Result<ExtPubkey, CfdError> {
     let extkey = self
       .extkey
@@ -612,6 +823,20 @@ impl ExtPubkey {
     ExtPubkey::from_key(extkey)
   }
 
+  /// Derive pubkey from number path string.
+  ///
+  /// # Arguments
+  /// * `path` - child number path (bip32 path).
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ExtPubkey;
+  /// let key = "xpub661MyMwAqRbcGB88KaFbLGiYAat55APKhtWg4uYMkXAmfuSTbq2QYsn9sKJCj1YqZPafsboef4h4YbXXhNhPwMbkHTpkf3zLhx7HvFw1NDy";
+  /// let extkey = ExtPubkey::new(key).expect("Fail");
+  /// let path = "2/1";
+  /// let derive_pubkey = extkey.derive_from_path(path).expect("Fail");
+  /// ```
   pub fn derive_from_path(&self, path: &str) -> Result<ExtPubkey, CfdError> {
     let extkey = self.extkey.derive_from_path(path, &ExtKeyType::Pubkey)?;
     ExtPubkey::from_key(extkey)
@@ -685,13 +910,22 @@ impl Default for ExtPubkey {
   }
 }
 
+/// The language for mnemonic.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum MnemonicLanguage {
+  /// English
   EN,
+  /// Spanish
   ES,
+  /// French
   FR,
+  /// Italic
   IT,
+  /// Japanese
   JP,
+  /// Simplified Chinese (China)
   ZhCn,
+  /// Traditional Chinese (Taiwan)
   ZhTw,
 }
 
@@ -709,16 +943,36 @@ impl MnemonicLanguage {
   }
 }
 
+/// A container that stores a hdwallet seed.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct HDWallet {
   seed: Vec<u8>,
 }
 
 impl HDWallet {
+  /// Get mnemonic word list by english.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::HDWallet;
+  /// let en_words = HDWallet::mnemonic_word_list_en().expect("Fail");
+  /// ```
   pub fn mnemonic_word_list_en() -> Result<Vec<String>, CfdError> {
     HDWallet::mnemonic_word_list(MnemonicLanguage::EN)
   }
 
+  /// Get mnemonic word list.
+  ///
+  /// # Arguments
+  /// * `lang` - A mnemonic language.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, MnemonicLanguage};
+  /// let en_words = HDWallet::mnemonic_word_list(MnemonicLanguage::EN).expect("Fail");
+  /// ```
   pub fn mnemonic_word_list(lang: MnemonicLanguage) -> Result<Vec<String>, CfdError> {
     let language = alloc_c_string(&lang.to_str())?;
     let handle = ErrorHandle::new()?;
@@ -777,6 +1031,19 @@ impl HDWallet {
     result
   }
 
+  /// Get mnemonic from entropy.
+  ///
+  /// # Arguments
+  /// * `entropy` - An entropy.
+  /// * `lang` - A mnemonic language.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, MnemonicLanguage};
+  /// let entropy = [1; 32];
+  /// let mnemonic = HDWallet::mnemonic_from_entropy(&entropy, MnemonicLanguage::EN).expect("Fail");
+  /// ```
   pub fn mnemonic_from_entropy(entropy: &[u8], lang: MnemonicLanguage) -> Result<String, CfdError> {
     let entropy_hex = alloc_c_string(&hex_from_bytes(&entropy))?;
     let language = alloc_c_string(&lang.to_str())?;
@@ -798,6 +1065,21 @@ impl HDWallet {
     result
   }
 
+  /// Get entropy from mnemonic.
+  ///
+  /// # Arguments
+  /// * `mnemonic` - A mnemonic string (join space).
+  /// * `lang` - A mnemonic language.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, MnemonicLanguage};
+  /// let entropy = HDWallet::entropy_from_mnemonic(
+  ///   "horn tenant knee talent sponsor spell gate clip pulse soap slush warm silver nephew swap uncle crack brave",
+  ///   MnemonicLanguage::EN,
+  /// ).expect("Fail");
+  /// ```
   pub fn entropy_from_mnemonic(
     mnemonic: &str,
     lang: MnemonicLanguage,
@@ -832,10 +1114,42 @@ impl HDWallet {
     result
   }
 
+  /// Create from mnemonic.
+  ///
+  /// # Arguments
+  /// * `mnemonic` - A mnemonic string (join space).
+  /// * `lang` - A mnemonic language.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, MnemonicLanguage};
+  /// let wallet = HDWallet::from_mnemonic(
+  ///   "horn tenant knee talent sponsor spell gate clip pulse soap slush warm silver nephew swap uncle crack brave",
+  ///   MnemonicLanguage::EN,
+  /// ).expect("Fail");
+  /// ```
   pub fn from_mnemonic(mnemonic: &str, lang: MnemonicLanguage) -> Result<HDWallet, CfdError> {
     HDWallet::from_mnemonic_passphrase(mnemonic, lang, "")
   }
 
+  /// Create from mnemonic passphrase.
+  ///
+  /// # Arguments
+  /// * `mnemonic` - A mnemonic string (join space).
+  /// * `lang` - A mnemonic language.
+  /// * `passphrase` - A passphrase.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, MnemonicLanguage};
+  /// let wallet = HDWallet::from_mnemonic_passphrase(
+  ///   "horn tenant knee talent sponsor spell gate clip pulse soap slush warm silver nephew swap uncle crack brave",
+  ///   MnemonicLanguage::EN,
+  ///   "pass",
+  /// ).expect("Fail");
+  /// ```
   pub fn from_mnemonic_passphrase(
     mnemonic: &str,
     lang: MnemonicLanguage,
@@ -873,6 +1187,18 @@ impl HDWallet {
     result
   }
 
+  /// Create from seed.
+  ///
+  /// # Arguments
+  /// * `seed` - A seed byte.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::HDWallet;
+  /// let seed = [1; 32];
+  /// let wallet = HDWallet::from_slice(&seed).expect("Fail");
+  /// ```
   pub fn from_slice(seed: &[u8]) -> Result<HDWallet, CfdError> {
     // verify
     let _verify = ExtPrivkey::from_seed(seed, &Network::Mainnet)?;
@@ -886,10 +1212,38 @@ impl HDWallet {
     &self.seed
   }
 
+  /// Generate ext privkey from a seed.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, Network};
+  /// let seed = [1; 32];
+  /// let hdwallet = HDWallet::from_slice(&seed).expect("Fail");
+  /// let extkey = hdwallet.get_privkey(&Network::Testnet).expect("Fail");
+  /// ```
   pub fn get_privkey(&self, network_type: &Network) -> Result<ExtPrivkey, CfdError> {
     ExtPrivkey::from_seed(&self.seed, network_type)
   }
 
+  /// Generate ext privkey from a seed, and derive from number path string.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  /// * `path` - child number path (bip32 path).
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, Network};
+  /// let seed = [1; 32];
+  /// let hdwallet = HDWallet::from_slice(&seed).expect("Fail");
+  /// let path = "2'/1";
+  /// let derive_key = hdwallet.get_privkey_from_path(&Network::Testnet, path).expect("Fail");
+  /// ```
   pub fn get_privkey_from_path(
     &self,
     network_type: &Network,
@@ -899,6 +1253,21 @@ impl HDWallet {
     ext_priv.derive_from_path(bip32path)
   }
 
+  /// Generate ext privkey from a seed, and derive from number.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  /// * `child_number` - A child number for derive.
+  /// * `hardened` - A hardened flag.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, Network};
+  /// let seed = [1; 32];
+  /// let hdwallet = HDWallet::from_slice(&seed).expect("Fail");
+  /// let derive_key = hdwallet.get_privkey_from_number(&Network::Testnet, 2, true).expect("Fail");
+  /// ```
   pub fn get_privkey_from_number(
     &self,
     network_type: &Network,
@@ -909,6 +1278,21 @@ impl HDWallet {
     ext_priv.derive_from_number(child_number, hardened)
   }
 
+  /// Generate ext privkey from a seed, and derive from number lists.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  /// * `child_number_list` - Multiple child number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, Network};
+  /// let seed = [1; 32];
+  /// let hdwallet = HDWallet::from_slice(&seed).expect("Fail");
+  /// let child_number_list = vec![0x80000002, 1];
+  /// let derive_key = hdwallet.get_privkey_from_number_list(&Network::Testnet, &child_number_list).expect("Fail");
+  /// ```
   pub fn get_privkey_from_number_list(
     &self,
     network_type: &Network,
@@ -918,11 +1302,39 @@ impl HDWallet {
     ext_priv.derive_from_number_list(child_number_list)
   }
 
+  /// Generate ext pubkey from a seed.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, Network};
+  /// let seed = [1; 32];
+  /// let hdwallet = HDWallet::from_slice(&seed).expect("Fail");
+  /// let extkey = hdwallet.get_pubkey(&Network::Testnet).expect("Fail");
+  /// ```
   pub fn get_pubkey(&self, network_type: &Network) -> Result<ExtPubkey, CfdError> {
     let ext_priv = ExtPrivkey::from_seed(&self.seed, &network_type)?;
     ext_priv.get_ext_pubkey()
   }
 
+  /// Generate ext pubkey from a seed, and derive from number path string.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  /// * `path` - child number path (bip32 path).
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, Network};
+  /// let seed = [1; 32];
+  /// let hdwallet = HDWallet::from_slice(&seed).expect("Fail");
+  /// let path = "2'/1";
+  /// let derive_key = hdwallet.get_pubkey_from_path(&Network::Testnet, path).expect("Fail");
+  /// ```
   pub fn get_pubkey_from_path(
     &self,
     network_type: &Network,
@@ -932,6 +1344,21 @@ impl HDWallet {
     ext_priv.derive_pubkey_from_path(bip32path)
   }
 
+  /// Generate ext pubkey from a seed, and derive from number.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  /// * `child_number` - A child number for derive.
+  /// * `hardened` - A hardened flag.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, Network};
+  /// let seed = [1; 32];
+  /// let hdwallet = HDWallet::from_slice(&seed).expect("Fail");
+  /// let derive_key = hdwallet.get_pubkey_from_number(&Network::Testnet, 2, true).expect("Fail");
+  /// ```
   pub fn get_pubkey_from_number(
     &self,
     network_type: &Network,
@@ -942,6 +1369,21 @@ impl HDWallet {
     ext_priv.derive_pubkey_from_number(child_number, hardened)
   }
 
+  /// Generate ext pubkey from a seed, and derive from number lists.
+  ///
+  /// # Arguments
+  /// * `network_type` - A target network.
+  /// * `child_number_list` - Multiple child number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{HDWallet, Network};
+  /// let seed = [1; 32];
+  /// let hdwallet = HDWallet::from_slice(&seed).expect("Fail");
+  /// let child_number_list = vec![0x80000002, 1];
+  /// let derive_key = hdwallet.get_pubkey_from_number_list(&Network::Testnet, &child_number_list).expect("Fail");
+  /// ```
   pub fn get_pubkey_from_number_list(
     &self,
     network_type: &Network,
