@@ -1270,7 +1270,7 @@ impl Default for KeyPair {
   }
 }
 
-/// An enumeration definition of  signature hash type.
+/// An enumeration definition of signature hash type.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SigHashType {
   /// SigHashType::All

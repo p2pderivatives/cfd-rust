@@ -13,6 +13,7 @@ use std::str::FromStr;
 
 use self::cfd_sys::{CfdCreateConfidentialAddress, CfdParseConfidentialAddress};
 
+/// A container that stores an elements confidential address.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConfidentialAddress {
   confidential_address: String,
@@ -21,6 +22,27 @@ pub struct ConfidentialAddress {
 }
 
 impl ConfidentialAddress {
+  /// Generate a confidential address.
+  ///
+  /// # Arguments
+  /// * `address` - An address.
+  /// * `confidential_key` - A pubkey of confidential address.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ConfidentialAddress;
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Pubkey;
+  /// use cfd_rust::Network;
+  /// use std::str::FromStr;
+  /// let pubkey_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let pubkey = Pubkey::from_str(pubkey_str).expect("fail");
+  /// let addr = Address::p2wpkh(&pubkey, &Network::LiquidV1).expect("fail");
+  /// let ct_key_str = "03662a01c232918c9deb3b330272483c3e4ec0c6b5da86df59252835afeb4ab5f9";
+  /// let ct_key = Pubkey::from_str(ct_key_str).expect("fail");
+  /// let ct_addr_result = ConfidentialAddress::new(&addr, &ct_key);
+  /// ```
   pub fn new(
     address: &Address,
     confidential_key: &Pubkey,
@@ -52,6 +74,18 @@ impl ConfidentialAddress {
     result
   }
 
+  /// Parse from a confidential address string.
+  ///
+  /// # Arguments
+  /// * `confidential_address` - A confidential address string.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ConfidentialAddress;
+  /// let ct_str = "lq1qqdnz5qwzx2gce80t8vesyujg8slyasxxkhdgdh6ey55rttltf26lna9hgcaf3exzfrlvcumlrq8zqnhut2vm2s96cf0nn240x";
+  /// let ct_addr_result = ConfidentialAddress::parse(ct_str);
+  /// ```
   pub fn parse(confidential_address: &str) -> Result<ConfidentialAddress, CfdError> {
     let ct_addr = alloc_c_string(confidential_address)?;
     let handle = ErrorHandle::new()?;

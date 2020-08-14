@@ -547,7 +547,7 @@ impl Descriptor {
   /// ```
   /// use cfd_rust::{Descriptor, Network, Script};
   /// use std::str::FromStr;
-  /// let op_1 = Script::from_hex("51").expect("Fail");
+  /// let op_1 = Script::from_asm("OP_TRUE").expect("Fail");
   /// let descriptor = Descriptor::raw_script(&op_1, &Network::Testnet).expect("Fail");
   /// ```
   pub fn raw_script(
