@@ -20,6 +20,7 @@ use self::cfd_sys::{
   CfdInitializeMultisigScript, CfdParseScript,
 };
 
+/// A container that stores a bitcoin script.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Script {
   buffer: Vec<u8>,
@@ -27,6 +28,18 @@ pub struct Script {
 }
 
 impl Script {
+  /// Generate from slice.
+  ///
+  /// # Arguments
+  /// * `data` - An unsigned 8bit slice that holds the byte data.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Script;
+  /// let bytes: Vec<u8> = vec![0];
+  /// let op_0 = Script::from_slice(&bytes);
+  /// ```
   #[inline]
   pub fn from_slice(data: &[u8]) -> Result<Script, CfdError> {
     let script_hex = alloc_c_string(&hex_from_bytes(data))?;
@@ -77,17 +90,53 @@ impl Script {
     result
   }
 
+  /// Generate from hex string.
+  ///
+  /// # Arguments
+  /// * `hex` - A hex string.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Script;
+  /// let op_0 = Script::from_hex("00").expect("Fail");
+  /// ```
   #[inline]
   pub fn from_hex(hex: &str) -> Result<Script, CfdError> {
     let buf = byte_from_hex(hex)?;
     Script::from_slice(&buf)
   }
 
+  /// Generate from ByteData.
+  ///
+  /// # Arguments
+  /// * `data` - An unsigned 8bit slice that holds the byte data.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{ByteData, Script};
+  /// let bytes: Vec<u8> = vec![0];
+  /// let data = ByteData::from_slice(&bytes);
+  /// let op_0 = Script::from_data(&data).expect("Fail");
+  /// ```
   #[inline]
   pub fn from_data(data: &ByteData) -> Result<Script, CfdError> {
     Script::from_slice(&data.to_slice())
   }
 
+  /// Generate from asm string.
+  /// (For multiple scripts, set a character string separated by spaces.)
+  ///
+  /// # Arguments
+  /// * `asm` - A asm string.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Script;
+  /// let op_0_data = Script::from_asm("OP_0 01020304").expect("Fail");
+  /// ```
   #[inline]
   pub fn from_asm(asm: &str) -> Result<Script, CfdError> {
     let asm_str = alloc_c_string(asm)?;
@@ -109,6 +158,18 @@ impl Script {
     result
   }
 
+  /// Generate from asm strings.
+  ///
+  /// # Arguments
+  /// * `strings` - A asm strings.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Script;
+  /// let script_str_list = vec!["OP_0".to_string(), "01020304".to_string()];
+  /// let op_0_data = Script::from_str_array(&script_str_list).expect("Fail");
+  /// ```
   #[inline]
   pub fn from_str_array(strings: &[String]) -> Result<Script, CfdError> {
     let asm = strings
@@ -119,6 +180,18 @@ impl Script {
     Script::from_asm(&asm)
   }
 
+  /// Generate from asm string list.
+  ///
+  /// # Arguments
+  /// * `strings` - A asm strings.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Script;
+  /// let script_str_list = ["OP_0", "01020304"];
+  /// let op_0_data = Script::from_strings(&script_str_list).expect("Fail");
+  /// ```
   pub fn from_strings(strings: &[&str]) -> Result<Script, CfdError> {
     let asm = strings
       .iter()
@@ -148,6 +221,16 @@ impl Script {
     &self.asm
   }
 
+  /// Get asm list.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Script;
+  /// let script_str_list = ["OP_0", "01020304"];
+  /// let op_0_data = Script::from_strings(&script_str_list).expect("Fail");
+  /// let asm_list = op_0_data.get_items();
+  /// ```
   #[inline]
   pub fn get_items(&self) -> Vec<&str> {
     self.asm.split(' ').collect::<Vec<_>>()
@@ -158,6 +241,27 @@ impl Script {
     self.buffer.is_empty()
   }
 
+  /// Create multisig script.
+  ///
+  /// # Arguments
+  /// * `require_num` - A multisig require number.
+  /// * `pubkey_list` - Multisig pubkey list.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Pubkey, Script};
+  /// use std::str::FromStr;
+  /// let key1_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key2_str = "03662a01c232918c9deb3b330272483c3e4ec0c6b5da86df59252835afeb4ab5f9";
+  /// let key3_str = "02239519ec61760ca0bae700d96581d417d9a37dddfc1eb54b9cd5da3788d387b3";
+  /// let key1 = Pubkey::from_str(key1_str).expect("fail");
+  /// let key2 = Pubkey::from_str(key2_str).expect("fail");
+  /// let key3 = Pubkey::from_str(key3_str).expect("fail");
+  /// let pubkey_list = vec![key1, key2, key3];
+  /// let require_num: u8 = 2;
+  /// let addr= Script::multisig(require_num, &pubkey_list).expect("Fail");
+  /// ```
   #[inline]
   pub fn multisig(require_num: u8, pubkey_list: &[Pubkey]) -> Result<Script, CfdError> {
     if pubkey_list.is_empty() {

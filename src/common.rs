@@ -458,6 +458,7 @@ pub fn request_json(request: &str, option: &str) -> Result<String, CfdError> {
   result
 }
 
+/// A container that cfd error handler.
 #[derive(Debug)]
 pub(in crate) struct ErrorHandle {
   handle: *mut c_void,
@@ -577,6 +578,7 @@ pub(in crate) fn byte_from_hex_unsafe(hex: &str) -> Vec<u8> {
   result
 }
 
+#[inline]
 pub(in crate) fn copy_array_32byte(buffer: &[u8]) -> [u8; 32] {
   let mut result: [u8; 32] = [0; 32];
   if buffer.len() >= 32 {
