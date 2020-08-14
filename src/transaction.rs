@@ -3,7 +3,7 @@ extern crate libc;
 
 // use self::cfd_sys as ffi;
 use self::libc::{c_char, c_uint, c_void};
-use crate::address::{Address, HashType};
+use crate::address::{Address, AddressType, HashType};
 use crate::common::{
   alloc_c_string, byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free,
   collect_multi_cstring_and_free, copy_array_32byte, hex_from_bytes, Amount, ByteData, CfdError,
@@ -32,15 +32,28 @@ use self::cfd_sys::{
 pub const SEQUENCE_LOCK_TIME_DISABLE: u32 = 0xffffffff;
 /// enable locktime (maximum time)
 pub const SEQUENCE_LOCK_TIME_ENABLE_MAX: u32 = 0xfffffffe;
-
+/// array size of txid.
 pub const TXID_SIZE: usize = 32;
 
+/// A container that stores a txid.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Txid {
   txid: [u8; TXID_SIZE],
 }
 
 impl Txid {
+  /// Generate from slice.
+  ///
+  /// # Arguments
+  /// * `txid` - An unsigned 8bit slice that holds the txid.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Txid;
+  /// let bytes = [2; 32];
+  /// let data = Txid::from_slice(&bytes);
+  /// ```
   pub fn from_slice(txid: &[u8; TXID_SIZE]) -> Txid {
     Txid { txid: *txid }
   }
@@ -88,6 +101,7 @@ impl Default for Txid {
   }
 }
 
+/// A container that stores a txid and vout.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct OutPoint {
   txid: Txid,
@@ -95,6 +109,20 @@ pub struct OutPoint {
 }
 
 impl OutPoint {
+  /// Create object.
+  ///
+  /// # Arguments
+  /// * `txid` - A txid object.
+  /// * `vout` - A unsigned 32bit transaction vout number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Txid, OutPoint};
+  /// let bytes = [2; 32];
+  /// let txid = Txid::from_slice(&bytes);
+  /// let outpoint = OutPoint::new(&txid, 1);
+  /// ```
   pub fn new(txid: &Txid, vout: u32) -> OutPoint {
     OutPoint {
       txid: txid.clone(),
@@ -102,6 +130,20 @@ impl OutPoint {
     }
   }
 
+  /// Create object from txid string.
+  ///
+  /// # Arguments
+  /// * `txid` - A txid string.
+  /// * `vout` - A unsigned 32bit transaction vout number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::OutPoint;
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// ```
   pub fn from_str(txid: &str, vout: u32) -> Result<OutPoint, CfdError> {
     let txid = Txid::from_str(txid)?;
     Ok(OutPoint { txid, vout })
@@ -133,12 +175,17 @@ impl Default for OutPoint {
   }
 }
 
+/// A container that stores witness stack.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ScriptWitness {
   pub witness_stack: Vec<ByteData>,
 }
 
 impl ScriptWitness {
+  /// Create from witness stack byte array.
+  ///
+  /// # Arguments
+  /// * `list` - Witness stack.
   pub fn new(list: &[ByteData]) -> ScriptWitness {
     ScriptWitness {
       witness_stack: list.to_vec(),
@@ -146,9 +193,9 @@ impl ScriptWitness {
   }
 
   pub fn get_stack(&self, index: u32) -> Result<&ByteData, CfdError> {
-    match self.witness_stack.len() <= index as usize {
-      true => Err(CfdError::IllegalArgument("invalid index.".to_string())),
-      _ => Ok(&self.witness_stack[index as usize]),
+    match self.witness_stack.len() > index as usize {
+      true => Ok(&self.witness_stack[index as usize]),
+      _ => Err(CfdError::OutOfRange("index out of range.".to_string())),
     }
   }
 
@@ -186,6 +233,7 @@ impl Default for ScriptWitness {
   }
 }
 
+/// A container that stores utxo information.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UtxoData {
   pub outpoint: OutPoint,
@@ -195,6 +243,22 @@ pub struct UtxoData {
 }
 
 impl UtxoData {
+  /// Create from out-point.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A txid string.
+  /// * `amount` - A satoshi amount.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{OutPoint, UtxoData};
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// let amount: i64 = 50000;
+  /// let utxo = UtxoData::from_outpoint(&outpoint, amount);
+  /// ```
   pub fn from_outpoint(outpoint: &OutPoint, amount: i64) -> UtxoData {
     UtxoData {
       outpoint: outpoint.clone(),
@@ -203,6 +267,26 @@ impl UtxoData {
       scriptsig_template: Script::default(),
     }
   }
+
+  /// Create from descriptor.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A txid string.
+  /// * `amount` - A satoshi amount.
+  /// * `descriptor` - An output descriptor.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, OutPoint, UtxoData};
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// let amount: i64 = 50000;
+  /// let desc_str = "pkh(02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5)";
+  /// let descriptor = Descriptor::new(desc_str, &Network::Testnet).expect("Fail");
+  /// let utxo = UtxoData::from_descriptor(&outpoint, amount, &descriptor);
+  /// ```
   pub fn from_descriptor(outpoint: &OutPoint, amount: i64, descriptor: &Descriptor) -> UtxoData {
     UtxoData {
       outpoint: outpoint.clone(),
@@ -211,6 +295,28 @@ impl UtxoData {
       scriptsig_template: Script::default(),
     }
   }
+
+  /// Create object.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A txid string.
+  /// * `amount` - A satoshi amount.
+  /// * `descriptor` - An output descriptor.
+  /// * `scriptsig_template` - A script template for calculating script hash signed size.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, OutPoint, Script, UtxoData};
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// let amount: i64 = 50000;
+  /// let desc_str = "pkh(02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5)";
+  /// let descriptor = Descriptor::new(desc_str, &Network::Testnet).expect("Fail");
+  /// let script = Script::default();
+  /// let utxo = UtxoData::new(&outpoint, amount, &descriptor, &script);
+  /// ```
   pub fn new(
     outpoint: &OutPoint,
     amount: i64,
@@ -243,6 +349,7 @@ impl Default for UtxoData {
   }
 }
 
+/// A container that stores transaction data.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TxData {
   pub txid: Txid,
@@ -268,6 +375,7 @@ impl Default for TxData {
   }
 }
 
+/// A container that stores transaction input data.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TxInData {
   pub outpoint: OutPoint,
@@ -285,6 +393,7 @@ impl TxInData {
   }
 }
 
+/// A container that stores transaction output data.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TxOutData {
   pub amount: i64,
@@ -304,6 +413,7 @@ impl TxOutData {
   }
 }
 
+/// A container that stores transaction input.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TxIn {
   pub outpoint: OutPoint,
@@ -339,6 +449,7 @@ impl Default for TxIn {
   }
 }
 
+/// A container that stores transaction output.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TxOut {
   pub amount: i64,
@@ -373,6 +484,7 @@ impl Default for TxOut {
   }
 }
 
+/// A container that stores bitcoin transaction.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Transaction {
   tx: Vec<u8>,
@@ -385,26 +497,64 @@ impl Transaction {
   pub fn to_str(&self) -> String {
     hex_from_bytes(&self.tx)
   }
+
   pub fn to_bytes(&self) -> &[u8] {
     &self.tx
   }
+
   pub fn as_txid(&self) -> &Txid {
     &self.data.txid
   }
+
   pub fn get_info(&self) -> &TxData {
     &self.data
   }
+
   pub fn get_txin_list(&self) -> &[TxIn] {
     &self.txin_list
   }
+
   pub fn get_txout_list(&self) -> &[TxOut] {
     &self.txout_list
   }
 
+  /// Create initial empty transaction.
+  ///
+  /// # Arguments
+  /// * `version` - A transaction version.
+  /// * `locktime` - A transaction locktime.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Transaction;
+  /// let tx = Transaction::new(2, 0).expect("Fail");
+  /// ```
   pub fn new(version: u32, locktime: u32) -> Result<Transaction, CfdError> {
     Transaction::create_tx(version, locktime, &[], &[])
   }
 
+  /// Create initial transaction.
+  ///
+  /// # Arguments
+  /// * `version` - A transaction version.
+  /// * `locktime` - A transaction locktime.
+  /// * `txin_list` - Transaction input list.
+  /// * `txout_list` - Transaction output list.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, OutPoint, Transaction, TxInData, TxOutData};
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// let txin_list = [TxInData::new(&outpoint)];
+  /// let amount: i64 = 50000;
+  /// let addr = Address::from_string("bc1q7jm5vw5cunpy3lkvwdl3sr3qfm794xd4jcdzrv").expect("Fail");
+  /// let txout_list = [TxOutData::from_address(amount, &addr)];
+  /// let tx = Transaction::create_tx(2, 0, &txin_list, &txout_list).expect("Fail");
+  /// ```
   pub fn create_tx(
     version: u32,
     locktime: u32,
@@ -422,6 +572,26 @@ impl Transaction {
     })
   }
 
+  /// Append to transaction.
+  ///
+  /// # Arguments
+  /// * `txin_list` - Transaction input list.
+  /// * `txout_list` - Transaction output list.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, OutPoint, Transaction, TxInData, TxOutData};
+  /// let tx = Transaction::new(2, 0).expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// let txin_list = [TxInData::new(&outpoint)];
+  /// let amount: i64 = 50000;
+  /// let addr = Address::from_string("bc1q7jm5vw5cunpy3lkvwdl3sr3qfm794xd4jcdzrv").expect("Fail");
+  /// let txout_list = [TxOutData::from_address(amount, &addr)];
+  /// let tx2 = tx.append_data(&txin_list, &txout_list).expect("Fail");
+  /// ```
   pub fn append_data(
     &self,
     txin_list: &[TxInData],
@@ -440,6 +610,28 @@ impl Transaction {
     })
   }
 
+  /// Update amount.
+  ///
+  /// # Arguments
+  /// * `version` - A transaction version.
+  /// * `locktime` - A transaction locktime.
+  /// * `txin_list` - Transaction input list.
+  /// * `txout_list` - Transaction output list.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, OutPoint, Transaction, TxInData, TxOutData};
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// let txin_list = [TxInData::new(&outpoint)];
+  /// let amount: i64 = 50000;
+  /// let addr = Address::from_string("bc1q7jm5vw5cunpy3lkvwdl3sr3qfm794xd4jcdzrv").expect("Fail");
+  /// let txout_list = [TxOutData::from_address(amount, &addr)];
+  /// let tx = Transaction::create_tx(2, 0, &txin_list, &txout_list).expect("Fail");
+  /// let tx2 = tx.update_amount(0, 60000).expect("Fail");
+  /// ```
   pub fn update_amount(&self, index: u32, amount: i64) -> Result<Transaction, CfdError> {
     let ope = TransactionOperation::new(&Network::Mainnet);
     let tx = ope.update_output_amount(&hex_from_bytes(&self.tx), index, amount)?;
@@ -468,6 +660,33 @@ impl Transaction {
     ope.get_txout_index_by_script(&hex_from_bytes(&self.tx), script)
   }
 
+  /// Create signature hash by pubkey.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `hash_type` - A transaction input hash type. (pubkey hash only)
+  /// * `pubkey` - A public key.
+  /// * `sighash_type` - A transaction input sighash-type.
+  /// * `amount` - A transaction input amount. (p2pkh is 0)
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, HashType, OutPoint, Pubkey, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "7461b02405414d79e79a5050684a333c922c1136f4bdff5fb94b551394edebbd",
+  ///   0).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash = tx.create_sighash_by_pubkey(
+  ///   &outpoint,
+  ///   &HashType::P2wpkh,
+  ///   &pubkey,
+  ///   &SigHashType::All,
+  ///   &Amount::new(60000)).expect("Fail");
+  /// ```
   pub fn create_sighash_by_pubkey(
     &self,
     outpoint: &OutPoint,
@@ -488,6 +707,33 @@ impl Transaction {
     )
   }
 
+  /// Create signature hash by redeem script.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `hash_type` - A transaction input hash type. (script hash only)
+  /// * `redeem_script` - A redeem script.
+  /// * `sighash_type` - A transaction input sighash-type.
+  /// * `amount` - A transaction input amount. (p2pkh is 0)
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, HashType, OutPoint, Script, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let script = Script::from_hex("512103d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b51ae").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "1497e1f146bc5fe00b6268ea16a7069ecb90a2a41a183446d5df8965d2356dc1",
+  ///   1).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash = tx.create_sighash_by_script(
+  ///   &outpoint,
+  ///   &HashType::P2wsh,
+  ///   &script,
+  ///   &SigHashType::All,
+  ///   &Amount::new(60000)).expect("Fail");
+  /// ```
   pub fn create_sighash_by_script(
     &self,
     outpoint: &OutPoint,
@@ -508,6 +754,42 @@ impl Transaction {
     )
   }
 
+  /// Add signature and pubkey into the transaction.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `hash_type` - A transaction input hash type. (pubkey hash only)
+  /// * `pubkey` - A public key using sign.
+  /// * `signature` - A signature.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, HashType, OutPoint, Privkey, Pubkey, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "7461b02405414d79e79a5050684a333c922c1136f4bdff5fb94b551394edebbd",
+  ///   0).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash_type = SigHashType::All;
+  /// let sighash = tx.create_sighash_by_pubkey(
+  ///   &outpoint,
+  ///   &HashType::P2wpkh,
+  ///   &pubkey,
+  ///   &sighash_type,
+  ///   &Amount::new(60000)).expect("Fail");
+  /// let privkey = Privkey::from_wif("cUCCL2wBhCHVwiRpfUVd1rjWUSB4QCnGBczhCW5neLFTQkxZimeG").expect("Fail");
+  /// let mut signature = privkey.calculate_ec_signature(&sighash, true).expect("Fail");
+  /// signature = signature.set_signature_hash(&sighash_type);
+  /// let signed_tx = tx.add_pubkey_hash_sign(
+  ///   &outpoint,
+  ///   &HashType::P2wpkh,
+  ///   &pubkey,
+  ///   &signature,
+  /// ).expect("Fail");
+  /// ```
   pub fn add_pubkey_hash_sign(
     &self,
     outpoint: &OutPoint,
@@ -531,6 +813,34 @@ impl Transaction {
     Ok(tx_obj)
   }
 
+  /// Sign with privkey.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `hash_type` - A transaction input hash type. (pubkey hash only)
+  /// * `privkey` - A private key using sign.
+  /// * `sighash_type` - A transaction input sighash-type.
+  /// * `amount` - A transaction input amount. (p2pkh is 0)
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, HashType, OutPoint, Privkey, Pubkey, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let outpoint = OutPoint::from_str(
+  ///   "7461b02405414d79e79a5050684a333c922c1136f4bdff5fb94b551394edebbd",
+  ///   0).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let privkey = Privkey::from_wif("cUCCL2wBhCHVwiRpfUVd1rjWUSB4QCnGBczhCW5neLFTQkxZimeG").expect("Fail");
+  /// let sighash_type = SigHashType::All;
+  /// let signed_tx = tx.sign_with_privkey(
+  ///   &outpoint,
+  ///   &HashType::P2wpkh,
+  ///   &privkey,
+  ///   &sighash_type,
+  ///   &Amount::new(60000)).expect("Fail");
+  /// ```
   pub fn sign_with_privkey(
     &self,
     outpoint: &OutPoint,
@@ -558,6 +868,45 @@ impl Transaction {
     Ok(tx_obj)
   }
 
+  /// Add multisig signatures and redeem script into the transaction.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `hash_type` - A transaction input hash type. (script hash only)
+  /// * `redeem_script` - A redeem script using sign.
+  /// * `signature_list` - Multiple signature.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, HashType, OutPoint, Privkey, Pubkey, Script, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let script = Script::from_hex("512103d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b51ae").expect("Fail");
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "1497e1f146bc5fe00b6268ea16a7069ecb90a2a41a183446d5df8965d2356dc1",
+  ///   1).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash_type = SigHashType::All;
+  /// let sighash = tx.create_sighash_by_script(
+  ///   &outpoint,
+  ///   &HashType::P2wsh,
+  ///   &script,
+  ///   &sighash_type,
+  ///   &Amount::new(60000)).expect("Fail");
+  /// let privkey = Privkey::from_wif("cUCCL2wBhCHVwiRpfUVd1rjWUSB4QCnGBczhCW5neLFTQkxZimeG").expect("Fail");
+  /// let mut signature = privkey.calculate_ec_signature(&sighash, true).expect("Fail");
+  /// signature = signature.set_signature_hash(&sighash_type)
+  ///   .set_related_pubkey(&pubkey);
+  /// let signature_list = [signature];
+  /// let signed_tx = tx.add_multisig_sign(
+  ///   &outpoint,
+  ///   &HashType::P2wsh,
+  ///   &script,
+  ///   &signature_list,
+  /// ).expect("Fail");
+  /// ```
   pub fn add_multisig_sign(
     &self,
     outpoint: &OutPoint,
@@ -586,6 +935,39 @@ impl Transaction {
     Ok(tx_obj)
   }
 
+  /// Add signature manually.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `hash_type` - A transaction input hash type.
+  /// * `sign_data` - A signature or byte data.
+  /// * `clear_stack` - Clear to already exist stack.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, HashType, OutPoint, Privkey, Pubkey, SigHashType, SignParameter, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "7461b02405414d79e79a5050684a333c922c1136f4bdff5fb94b551394edebbd",
+  ///   0).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash_type = SigHashType::All;
+  /// let sighash = tx.create_sighash_by_pubkey(
+  ///   &outpoint,
+  ///   &HashType::P2wpkh,
+  ///   &pubkey,
+  ///   &sighash_type,
+  ///   &Amount::new(60000)).expect("Fail");
+  /// let privkey = Privkey::from_wif("cUCCL2wBhCHVwiRpfUVd1rjWUSB4QCnGBczhCW5neLFTQkxZimeG").expect("Fail");
+  /// let mut signature = privkey.calculate_ec_signature(&sighash, true).expect("Fail");
+  /// signature = signature.set_signature_hash(&sighash_type);
+  /// let tx2 = tx.add_sign(&outpoint, &HashType::P2wpkh, &signature, true).expect("Fail");
+  /// let pubkey_sign = SignParameter::from_slice(pubkey.to_slice());
+  /// let signed_tx = tx2.add_sign(&outpoint, &HashType::P2wpkh, &pubkey_sign, false).expect("Fail");
+  /// ```
   pub fn add_sign(
     &self,
     outpoint: &OutPoint,
@@ -609,6 +991,42 @@ impl Transaction {
     Ok(tx_obj)
   }
 
+  /// Add redeem script with sign.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `hash_type` - A transaction input hash type.
+  /// * `redeem_script` - A redeem script.
+  /// * `clear_stack` - Clear to already exist stack.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, HashType, OutPoint, Privkey, Pubkey, Script, SignParameter, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let script = Script::from_hex("512103d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b51ae").expect("Fail");
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "1497e1f146bc5fe00b6268ea16a7069ecb90a2a41a183446d5df8965d2356dc1",
+  ///   1).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash_type = SigHashType::All;
+  /// let sighash = tx.create_sighash_by_script(
+  ///   &outpoint,
+  ///   &HashType::P2wsh,
+  ///   &script,
+  ///   &sighash_type,
+  ///   &Amount::new(60000)).expect("Fail");
+  /// let privkey = Privkey::from_wif("cUCCL2wBhCHVwiRpfUVd1rjWUSB4QCnGBczhCW5neLFTQkxZimeG").expect("Fail");
+  /// let mut signature = privkey.calculate_ec_signature(&sighash, true).expect("Fail");
+  /// signature = signature.set_signature_hash(&sighash_type)
+  ///   .set_related_pubkey(&pubkey);
+  /// let empty_sig = SignParameter::from_slice(&[]);
+  /// let tx2 = tx.add_sign(&outpoint, &HashType::P2wpkh, &empty_sig, true).expect("Fail");
+  /// let tx3 = tx2.add_sign(&outpoint, &HashType::P2wpkh, &signature, false).expect("Fail");
+  /// let signed_tx = tx3.add_script_hash_sign(&outpoint, &HashType::P2wsh, &script, false).expect("Fail");
+  /// ```
   pub fn add_script_hash_sign(
     &self,
     outpoint: &OutPoint,
@@ -632,6 +1050,34 @@ impl Transaction {
     Ok(tx_obj)
   }
 
+  /// Verify signature with pubkey.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `hash_type` - A transaction input hash type. (pubkey hash only)
+  /// * `pubkey` - A public key using sign.
+  /// * `signature` - A signature.
+  /// * `amount` - A transaction input amount.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, HashType, OutPoint, Privkey, Pubkey, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "7461b02405414d79e79a5050684a333c922c1136f4bdff5fb94b551394edebbd",
+  ///   0).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash_type = SigHashType::All;
+  /// let amount = Amount::new(60000);
+  /// let hash_type = HashType::P2wpkh;
+  /// let sighash = tx.create_sighash_by_pubkey(&outpoint, &hash_type, &pubkey, &sighash_type, &amount).expect("Fail");
+  /// let privkey = Privkey::from_wif("cUCCL2wBhCHVwiRpfUVd1rjWUSB4QCnGBczhCW5neLFTQkxZimeG").expect("Fail");
+  /// let signature = privkey.calculate_ec_signature(&sighash, true).expect("Fail");
+  /// let verify = tx.verify_signature_by_pubkey(&outpoint, &hash_type, &pubkey, &signature, &amount).expect("Fail");
+  /// ```
   pub fn verify_signature_by_pubkey(
     &self,
     outpoint: &OutPoint,
@@ -653,17 +1099,49 @@ impl Transaction {
     )
   }
 
+  /// Verify signature with redeem script.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `hash_type` - A transaction input hash type.
+  /// * `pubkey` - A public key using sign.
+  /// * `redeem_script` - A redeem script using locking script.
+  /// * `signature` - A signature.
+  /// * `amount` - A transaction input amount.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, HashType, OutPoint, Privkey, Pubkey, Script, SignParameter, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let script = Script::from_hex("512103d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b51ae").expect("Fail");
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "1497e1f146bc5fe00b6268ea16a7069ecb90a2a41a183446d5df8965d2356dc1",
+  ///   1).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash_type = SigHashType::All;
+  /// let hash_type = HashType::P2wsh;
+  /// let amount = Amount::new(60000);
+  /// let sighash = tx.create_sighash_by_script(&outpoint, &hash_type, &script, &sighash_type, &amount).expect("Fail");
+  /// let privkey = Privkey::from_wif("cUCCL2wBhCHVwiRpfUVd1rjWUSB4QCnGBczhCW5neLFTQkxZimeG").expect("Fail");
+  /// let mut signature = privkey.calculate_ec_signature(&sighash, true).expect("Fail");
+  /// signature = signature.set_related_pubkey(&pubkey);
+  /// let verify = tx.verify_signature_by_script(&outpoint, &hash_type, &pubkey, &script, &signature, &amount).expect("Fail");
+  /// ```
   pub fn verify_signature_by_script(
     &self,
     outpoint: &OutPoint,
     hash_type: &HashType,
+    pubkey: &Pubkey,
     redeem_script: &Script,
     signature: &SignParameter,
     amount: &Amount,
   ) -> Result<bool, CfdError> {
     let ope = TransactionOperation::new(&Network::Mainnet);
     let option = SigHashOption::new(*signature.get_sighash_type(), amount.as_satoshi_amount());
-    let key = HashTypeData::from_script(redeem_script);
+    let key = HashTypeData::new(pubkey, redeem_script);
     ope.verify_signature(
       &hex_from_bytes(&self.tx),
       outpoint,
@@ -674,6 +1152,35 @@ impl Transaction {
     )
   }
 
+  /// Verify sign with address.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `address` - A transaction input address.
+  /// * `amount` - A transaction input amount.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, Amount, HashType, Network, OutPoint, Privkey, Pubkey, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "7461b02405414d79e79a5050684a333c922c1136f4bdff5fb94b551394edebbd",
+  ///   0).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash_type = SigHashType::All;
+  /// let amount = Amount::new(60000);
+  /// let sighash = tx.create_sighash_by_pubkey(&outpoint, &HashType::P2wpkh, &pubkey, &sighash_type, &amount).expect("Fail");
+  /// let privkey = Privkey::from_wif("cUCCL2wBhCHVwiRpfUVd1rjWUSB4QCnGBczhCW5neLFTQkxZimeG").expect("Fail");
+  /// let mut signature = privkey.calculate_ec_signature(&sighash, true).expect("Fail");
+  /// signature = signature.set_signature_hash(&sighash_type);
+  /// let signed_tx = tx.add_pubkey_hash_sign(&outpoint, &HashType::P2wpkh, &pubkey, &signature,
+  /// ).expect("Fail");
+  /// let addr = Address::p2wpkh(&pubkey, &Network::Testnet).expect("Fail");
+  /// let is_verify = signed_tx.verify_sign_by_address(&outpoint, &addr, &amount).expect("Fail");
+  /// ```
   pub fn verify_sign_by_address(
     &self,
     outpoint: &OutPoint,
@@ -686,15 +1193,46 @@ impl Transaction {
       &hex_from_bytes(&self.tx),
       outpoint,
       address,
+      address.get_address_type(),
       &Script::default(),
       &option,
     )
   }
 
+  /// Verify sign with locking script.
+  ///
+  /// # Arguments
+  /// * `outpoint` - A transaction input out-point.
+  /// * `locking_script` - A transaction input locking script.
+  /// * `amount` - A transaction input amount.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, Amount, HashType, Network, OutPoint, Privkey, Pubkey, SigHashType, Transaction};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "7461b02405414d79e79a5050684a333c922c1136f4bdff5fb94b551394edebbd",
+  ///   0).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let sighash_type = SigHashType::All;
+  /// let amount = Amount::new(60000);
+  /// let sighash = tx.create_sighash_by_pubkey(&outpoint, &HashType::P2wpkh, &pubkey, &sighash_type, &amount).expect("Fail");
+  /// let privkey = Privkey::from_wif("cUCCL2wBhCHVwiRpfUVd1rjWUSB4QCnGBczhCW5neLFTQkxZimeG").expect("Fail");
+  /// let mut signature = privkey.calculate_ec_signature(&sighash, true).expect("Fail");
+  /// signature = signature.set_signature_hash(&sighash_type);
+  /// let signed_tx = tx.add_pubkey_hash_sign(&outpoint, &HashType::P2wpkh, &pubkey, &signature,
+  /// ).expect("Fail");
+  /// let addr = Address::p2wpkh(&pubkey, &Network::Testnet).expect("Fail");
+  /// let is_verify = signed_tx.verify_sign_by_script(&outpoint, addr.get_locking_script(), &addr.get_address_type().to_hash_type(), &amount).expect("Fail");
+  /// ```
   pub fn verify_sign_by_script(
     &self,
     outpoint: &OutPoint,
     locking_script: &Script,
+    hash_type: &HashType,
     amount: &Amount,
   ) -> Result<(), CfdError> {
     let ope = TransactionOperation::new(&Network::Mainnet);
@@ -703,6 +1241,7 @@ impl Transaction {
       &hex_from_bytes(&self.tx),
       outpoint,
       &Address::default(),
+      &hash_type.to_address_type(),
       locking_script,
       &option,
     )
@@ -775,21 +1314,22 @@ pub(in crate) struct HashTypeData {
 }
 
 impl HashTypeData {
+  pub fn new(pubkey: &Pubkey, script: &Script) -> HashTypeData {
+    HashTypeData {
+      pubkey: pubkey.clone(),
+      script: script.clone(),
+    }
+  }
+
   pub fn from_pubkey(pubkey: &Pubkey) -> HashTypeData {
     HashTypeData {
       pubkey: pubkey.clone(),
       script: Script::default(),
     }
   }
-
-  pub fn from_script(script: &Script) -> HashTypeData {
-    HashTypeData {
-      pubkey: Pubkey::default(),
-      script: script.clone(),
-    }
-  }
 }
 
+/// A container that operating transaction base.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(in crate) struct TransactionOperation {
   network: Network,
@@ -1459,6 +1999,7 @@ impl TransactionOperation {
     tx: &str,
     outpoint: &OutPoint,
     address: &Address,
+    address_type: &AddressType,
     locking_script: &Script,
     option: &SigHashOption,
   ) -> Result<(), CfdError> {
@@ -1468,6 +2009,8 @@ impl TransactionOperation {
     let script_hex = alloc_c_string(&locking_script.to_hex())?;
     let value_byte_hex = alloc_c_string(&option.value_byte.to_hex())?;
     let handle = ErrorHandle::new()?;
+    println!("locking_script:{}", locking_script.to_hex());
+    println!("address_type:{}", address_type);
     let error_code = unsafe {
       CfdVerifyTxSign(
         handle.as_handle(),
@@ -1476,7 +2019,7 @@ impl TransactionOperation {
         txid.as_ptr(),
         outpoint.vout,
         address_str.as_ptr(),
-        address.get_address_type().to_c_value(),
+        address_type.to_c_value(),
         script_hex.as_ptr(),
         option.amount,
         value_byte_hex.as_ptr(),
@@ -1506,7 +2049,7 @@ impl TransactionOperation {
         &mut count,
       )
     };
-    let result = match error_code {
+    match error_code {
       0 => {
         let mut list: Vec<ByteData> = vec![];
         let mut stack_index = 0;
@@ -1543,8 +2086,7 @@ impl TransactionOperation {
         }
       }
       _ => Err(handle.get_error(error_code)),
-    };
-    result
+    }
   }
 
   fn get_txout_index(
