@@ -5,6 +5,7 @@ use std::path::Path;
 
 fn main() {
   println!("cargo:rerun-if-changed=build.rs");
+  println!("cargo:rerun-if-changed=src/lib.rs");
   println!("cargo:rerun-if-changed=cfd-cmake/CMakeLists.txt");
   println!("cargo:rerun-if-changed=cfd-cmake/external/CMakeLists.txt");
 
