@@ -261,11 +261,9 @@ impl ByteData {
   /// use cfd_rust::ByteData;
   /// let bytes: Vec<u8> = vec![0, 1, 2, 3];
   /// let data = ByteData::from_slice(&bytes);
-  /// let serial_result = data.serialize();
-  /// if let Ok(serialized_data) = serial_result {
-  ///   let serial_hex = serialized_data.to_hex();
-  ///   // serial_hex == "0400010203"
-  /// }
+  /// let serial = data.serialize().expect("Fail");
+  /// let serial_hex = serial.to_hex();
+  /// // serial_hex == "0400010203"
   /// ```
   pub fn serialize(&self) -> Result<ByteData, CfdError> {
     let buffer = alloc_c_string(&hex_from_bytes(&self.data))?;
@@ -408,10 +406,8 @@ impl Amount {
   /// ```
   /// use cfd_rust::Amount;
   /// let amount = Amount::new(100000);
-  /// let byte_data_result = amount.as_byte();
-  /// if let Ok(_byte_data) = byte_data_result {
-  ///   // byte_data == "a086010000000000"
-  /// }
+  /// let byte_data = amount.as_byte().expect("Fail");
+  /// // byte_data == "a086010000000000"
   /// ```
   pub fn as_byte(&self) -> Result<Vec<u8>, CfdError> {
     let handle = ErrorHandle::new()?;

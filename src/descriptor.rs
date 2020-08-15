@@ -579,7 +579,7 @@ impl Descriptor {
   /// let key3 = Pubkey::from_str(key3_str).expect("fail");
   /// let pubkey_list = vec![key1, key2, key3];
   /// let require_num: u8 = 2;
-  /// let addr_result = Descriptor::multisig(&pubkey_list, require_num, &HashType::P2wsh, &Network::Mainnet);
+  /// let desc = Descriptor::multisig(&pubkey_list, require_num, &HashType::P2wsh, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn multisig(
     pubkey_list: &[Pubkey],
@@ -611,7 +611,7 @@ impl Descriptor {
   /// let key3 = Pubkey::from_str(key3_str).expect("fail");
   /// let pubkey_list = vec![key1, key2, key3];
   /// let require_num: u8 = 2;
-  /// let addr_result = Descriptor::sorted_multisig(&pubkey_list, require_num, &HashType::P2wsh, &Network::Mainnet);
+  /// let desc = Descriptor::sorted_multisig(&pubkey_list, require_num, &HashType::P2wsh, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn sorted_multisig(
     pubkey_list: &[Pubkey],
