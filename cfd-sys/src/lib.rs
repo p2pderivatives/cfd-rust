@@ -814,6 +814,7 @@ fns! {
     handle: *const c_void,
     utxo_count: c_uint,
     target_asset_count: c_uint,
+    fee_asset: *const i8,
     tx_fee_amount: c_longlong,
     effective_fee_rate: c_double,
     long_term_fee_rate: c_double,
