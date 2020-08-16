@@ -293,7 +293,7 @@ impl Address {
   /// ```
   /// use cfd_rust::Address;
   /// let addr_str = "bc1q7jm5vw5cunpy3lkvwdl3sr3qfm794xd4jcdzrv";
-  /// let addr_result = Address::from_string(addr_str);
+  /// let addr = Address::from_string(addr_str).expect("Fail");
   /// ```
   pub fn from_string(address: &str) -> Result<Address, CfdError> {
     let addr = alloc_c_string(address)?;
@@ -349,7 +349,7 @@ impl Address {
   /// use cfd_rust::Script;
   /// let script_hex = "0014f4b7463a98e4c248fecc737f180e204efc5a99b5";
   /// let script = Script::from_hex(script_hex).expect("fail");
-  /// let addr_result = Address::from_locking_script(&script, &Network::Mainnet);
+  /// let addr = Address::from_locking_script(&script, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn from_locking_script(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     let hex = alloc_c_string(&script.to_hex())?;
@@ -401,7 +401,7 @@ impl Address {
   /// let key3 = Pubkey::from_str(key3_str).expect("fail");
   /// let pubkey_list = vec![key1, key2, key3];
   /// let require_num: u8 = 2;
-  /// let addr_result = Address::from_multisig(require_num, &pubkey_list, &AddressType::P2wshAddress, &Network::Mainnet);
+  /// let addr = Address::from_multisig(require_num, &pubkey_list, &AddressType::P2wshAddress, &Network::Mainnet).expect("Fail");
   /// ```
   #[inline]
   pub fn from_multisig(
@@ -434,7 +434,7 @@ impl Address {
   /// use std::str::FromStr;
   /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
   /// let key = Pubkey::from_str(key_str).expect("fail");
-  /// let addr_result = Address::p2pkh(&key, &Network::Mainnet);
+  /// let addr = Address::p2pkh(&key, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn p2pkh(pubkey: &Pubkey, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
@@ -460,7 +460,7 @@ impl Address {
   /// use std::str::FromStr;
   /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
   /// let key = Pubkey::from_str(key_str).expect("fail");
-  /// let addr_result = Address::p2wpkh(&key, &Network::Mainnet);
+  /// let addr = Address::p2wpkh(&key, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn p2wpkh(pubkey: &Pubkey, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
@@ -486,7 +486,7 @@ impl Address {
   /// use std::str::FromStr;
   /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
   /// let key = Pubkey::from_str(key_str).expect("fail");
-  /// let addr_result = Address::p2sh_p2wpkh(&key, &Network::Mainnet);
+  /// let addr = Address::p2sh_p2wpkh(&key, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn p2sh_p2wpkh(pubkey: &Pubkey, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
@@ -512,7 +512,7 @@ impl Address {
   /// use std::str::FromStr;
   /// let script_hex = "522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae";
   /// let script = Script::from_hex(script_hex).expect("fail");
-  /// let addr_result = Address::p2sh(&script, &Network::Mainnet);
+  /// let addr = Address::p2sh(&script, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn p2sh(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
@@ -538,7 +538,7 @@ impl Address {
   /// use std::str::FromStr;
   /// let script_hex = "522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae";
   /// let script = Script::from_hex(script_hex).expect("fail");
-  /// let addr_result = Address::p2wsh(&script, &Network::Mainnet);
+  /// let addr = Address::p2wsh(&script, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn p2wsh(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
@@ -564,7 +564,7 @@ impl Address {
   /// use std::str::FromStr;
   /// let script_hex = "522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae";
   /// let script = Script::from_hex(script_hex).expect("fail");
-  /// let addr_result = Address::p2sh_p2wsh(&script, &Network::Mainnet);
+  /// let addr = Address::p2sh_p2wsh(&script, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn p2sh_p2wsh(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
@@ -611,7 +611,7 @@ impl Address {
   /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
   /// let key = Pubkey::from_str(key_str).expect("fail");
   /// let addr = Address::p2sh_p2wpkh(&key, &Network::Mainnet).expect("fail");
-  /// let script_result = addr.get_p2sh_wrapped_script();
+  /// let script = addr.get_p2sh_wrapped_script().expect("Fail");
   /// ```
   pub fn get_p2sh_wrapped_script(&self) -> Result<&Script, CfdError> {
     match self.address_type {
@@ -663,7 +663,7 @@ impl Address {
   /// use cfd_rust::Script;
   /// let script_hex = "522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae";
   /// let script = Script::from_hex(script_hex).expect("fail");
-  /// let addr_list_result = Address::get_multisig_addresses(&script, &AddressType::P2wpkhAddress, &Network::Mainnet);
+  /// let addr_list = Address::get_multisig_addresses(&script, &AddressType::P2wpkhAddress, &Network::Mainnet).expect("Fail");
   /// ```
   pub fn get_multisig_addresses(
     multisig_script: &Script,

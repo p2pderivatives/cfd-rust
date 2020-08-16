@@ -5,7 +5,7 @@
 
 extern crate libc;
 
-use self::libc::{c_char, c_int, c_longlong, c_uint, c_void};
+use self::libc::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
 
 // references: https://github.com/rust-lang/libz-sys
 #[rustfmt::skip]
@@ -671,211 +671,209 @@ fns! {
     direct_locking_script: *const i8,
     index: *mut c_uint,
   ) -> c_int;
-/*
-fn CfdInitializeFundRawTx(
-  handle: *const c_void,
-  network_type: c_int,
-  target_asset_count: c_uint,
-  fee_asset: *const i8,
-  fund_handle: *mut *mut c_void,
-) -> c_int;
-fn CfdAddTxInForFundRawTx(
-  handle: *const c_void,
-  fund_handle: *const c_void,
-  txid: *const i8,
-  vout: c_uint,
-  amount: c_longlong,
-  descriptor: *const i8,
-  asset: *const i8,
-  is_issuance: bool,
-  is_blind_issuance: bool,
-  is_pegin: bool,
-  pegin_btc_tx_size: c_uint,
-  fedpeg_script: *const i8,
-) -> c_int;
-fn CfdAddTxInTemplateForFundRawTx(
-  handle: *const c_void,
-  fund_handle: *const c_void,
-  txid: *const i8,
-  vout: c_uint,
-  amount: c_longlong,
-  descriptor: *const i8,
-  asset: *const i8,
-  is_issuance: bool,
-  is_blind_issuance: bool,
-  is_pegin: bool,
-  pegin_btc_tx_size: c_uint,
-  fedpeg_script: *const i8,
-  scriptsig_template: *const i8,
-) -> c_int;
-fn CfdAddUtxoForFundRawTx(
-  handle: *const c_void,
-  fund_handle: *const c_void,
-  txid: *const i8,
-  vout: c_uint,
-  amount: c_longlong,
-  descriptor: *const i8,
-  asset: *const i8,
-) -> c_int;
-fn CfdAddUtxoTemplateForFundRawTx(
-  handle: *const c_void,
-  fund_handle: *const c_void,
-  txid: *const i8,
-  vout: c_uint,
-  amount: c_longlong,
-  descriptor: *const i8,
-  asset: *const i8,
-  scriptsig_template: *const i8,
-) -> c_int;
-fn CfdAddTargetAmountForFundRawTx(
-  handle: *const c_void,
-  fund_handle: *const c_void,
-  asset_index: c_uint,
-  amount: c_longlong,
-  asset: *const i8,
-  reserved_address: *const i8,
-) -> c_int;
-fn CfdSetOptionFundRawTx(
-  handle: *const c_void,
-  fund_handle: *const c_void,
-  key: c_int,
-  int64_value: c_longlong,
-  double_value: c_double,
-  bool_value: bool,
-) -> c_int;
-fn CfdFinalizeFundRawTx(
-  handle: *const c_void,
-  fund_handle: *const c_void,
-  tx_hex: *const i8,
-  effective_fee_rate: c_double,
-  tx_fee: *mut c_longlong,
-  append_txout_count: *mut c_uint,
-  output_tx: *mut *mut c_char,
-) -> c_int;
-fn CfdGetAppendTxOutFundRawTx(
-  handle: *const c_void,
-  fund_handle: *const c_void,
-  index: c_uint,
-  append_address: *mut *mut c_char,
-) -> c_int;
-fn CfdFreeFundRawTxHandle(handle: *const c_void, fund_handle: *const c_void) -> c_int;
+  pub fn CfdInitializeEstimateFee(
+    handle: *const c_void,
+    fee_handle: *mut *mut c_void,
+    is_elements: bool,
+  ) -> c_int;
+  pub fn CfdAddTxInForEstimateFee(
+    handle: *const c_void,
+    fee_handle: *const c_void,
+    txid: *const i8,
+    vout: c_uint,
+    descriptor: *const i8,
+    asset: *const i8,
+    is_issuance: bool,
+    is_blind_issuance: bool,
+    is_pegin: bool,
+    pegin_btc_tx_size: c_uint,
+    fedpeg_script: *const i8,
+  ) -> c_int;
+  pub fn CfdAddTxInTemplateForEstimateFee(
+    handle: *const c_void,
+    fee_handle: *const c_void,
+    txid: *const i8,
+    vout: c_uint,
+    descriptor: *const i8,
+    asset: *const i8,
+    is_issuance: bool,
+    is_blind_issuance: bool,
+    is_pegin: bool,
+    pegin_btc_tx_size: c_uint,
+    fedpeg_script: *const i8,
+    scriptsig_template: *const i8,
+  ) -> c_int;
+  pub fn CfdSetOptionEstimateFee(
+    handle: *const c_void,
+    fee_handle: *const c_void,
+    key: c_int,
+    int64_value: c_longlong,
+    double_value: c_double,
+    bool_value: bool,
+  ) -> c_int;
+  pub fn CfdFinalizeEstimateFee(
+    handle: *const c_void,
+    fee_handle: *const c_void,
+    tx_hex: *const i8,
+    fee_asset: *const i8,
+    tx_fee: *mut c_longlong,
+    utxo_fee: *mut c_longlong,
+    is_blind: bool,
+    effective_fee_rate: c_double,
+  ) -> c_int;
+  pub fn CfdFreeEstimateFeeHandle(handle: *const c_void, fee_handle: *const c_void) -> c_int;
+  pub fn CfdInitializeFundRawTx(
+    handle: *const c_void,
+    network_type: c_int,
+    target_asset_count: c_uint,
+    fee_asset: *const i8,
+    fund_handle: *mut *mut c_void,
+  ) -> c_int;
+  pub fn CfdAddTxInForFundRawTx(
+    handle: *const c_void,
+    fund_handle: *const c_void,
+    txid: *const i8,
+    vout: c_uint,
+    amount: c_longlong,
+    descriptor: *const i8,
+    asset: *const i8,
+    is_issuance: bool,
+    is_blind_issuance: bool,
+    is_pegin: bool,
+    pegin_btc_tx_size: c_uint,
+    fedpeg_script: *const i8,
+  ) -> c_int;
+  pub fn CfdAddTxInTemplateForFundRawTx(
+    handle: *const c_void,
+    fund_handle: *const c_void,
+    txid: *const i8,
+    vout: c_uint,
+    amount: c_longlong,
+    descriptor: *const i8,
+    asset: *const i8,
+    is_issuance: bool,
+    is_blind_issuance: bool,
+    is_pegin: bool,
+    pegin_btc_tx_size: c_uint,
+    fedpeg_script: *const i8,
+    scriptsig_template: *const i8,
+  ) -> c_int;
+  pub fn CfdAddUtxoForFundRawTx(
+    handle: *const c_void,
+    fund_handle: *const c_void,
+    txid: *const i8,
+    vout: c_uint,
+    amount: c_longlong,
+    descriptor: *const i8,
+    asset: *const i8,
+  ) -> c_int;
+  pub fn CfdAddUtxoTemplateForFundRawTx(
+    handle: *const c_void,
+    fund_handle: *const c_void,
+    txid: *const i8,
+    vout: c_uint,
+    amount: c_longlong,
+    descriptor: *const i8,
+    asset: *const i8,
+    scriptsig_template: *const i8,
+  ) -> c_int;
+  pub fn CfdAddTargetAmountForFundRawTx(
+    handle: *const c_void,
+    fund_handle: *const c_void,
+    asset_index: c_uint,
+    amount: c_longlong,
+    asset: *const i8,
+    reserved_address: *const i8,
+  ) -> c_int;
+  pub fn CfdSetOptionFundRawTx(
+    handle: *const c_void,
+    fund_handle: *const c_void,
+    key: c_int,
+    int64_value: c_longlong,
+    double_value: c_double,
+    bool_value: bool,
+  ) -> c_int;
+  pub fn CfdFinalizeFundRawTx(
+    handle: *const c_void,
+    fund_handle: *const c_void,
+    tx_hex: *const i8,
+    effective_fee_rate: c_double,
+    tx_fee: *mut c_longlong,
+    append_txout_count: *mut c_uint,
+    output_tx: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdGetAppendTxOutFundRawTx(
+    handle: *const c_void,
+    fund_handle: *const c_void,
+    index: c_uint,
+    append_address: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdFreeFundRawTxHandle(handle: *const c_void, fund_handle: *const c_void) -> c_int;
 
-fn CfdInitializeCoinSelection(
-  handle: *const c_void,
-  utxo_count: c_uint,
-  target_asset_count: c_uint,
-  tx_fee_amount: c_longlong,
-  effective_fee_rate: c_double,
-  long_term_fee_rate: c_double,
-  dust_fee_rate: c_double,
-  knapsack_min_change: c_longlong,
-  coin_select_handle: *mut *mut c_void,
-) -> c_int;
-fn CfdAddCoinSelectionUtxo(
-  handle: *const c_void,
-  coin_select_handle: *const c_void,
-  utxo_index: c_int,
-  txid: *const i8,
-  vout: c_uint,
-  amount: c_longlong,
-  asset: *const i8,
-  descriptor: *const i8,
-) -> c_int;
-fn CfdAddCoinSelectionUtxoTemplate(
-  handle: *const c_void,
-  coin_select_handle: *const c_void,
-  utxo_index: c_int,
-  txid: *const i8,
-  vout: c_uint,
-  amount: c_longlong,
-  asset: *const i8,
-  descriptor: *const i8,
-  scriptsig_template: *const i8,
-) -> c_int;
-fn CfdAddCoinSelectionAmount(
-  handle: *const c_void,
-  coin_select_handle: *const c_void,
-  asset_index: c_uint,
-  amount: c_longlong,
-  asset: *const i8,
-) -> c_int;
-fn CfdSetOptionCoinSelection(
-  handle: *const c_void,
-  coin_select_handle: *const c_void,
-  key: c_int,
-  int64_value: c_longlong,
-  double_value: c_double,
-  bool_value: bool,
-) -> c_int;
-fn CfdFinalizeCoinSelection(
-  handle: *const c_void,
-  coin_select_handle: *const c_void,
-  utxo_fee_amount: *mut c_longlong,
-) -> c_int;
-fn CfdGetSelectedCoinIndex(
-  handle: *const c_void,
-  coin_select_handle: *const c_void,
-  index: c_uint,
-  utxo_index: *mut c_int,
-) -> c_int;
-fn CfdGetSelectedCoinAssetAmount(
-  handle: *const c_void,
-  coin_select_handle: *const c_void,
-  asset_index: c_uint,
-  amount: *mut c_longlong,
-) -> c_int;
-fn CfdFreeCoinSelectionHandle(handle: *const c_void, coin_select_handle: *const c_void) -> c_int;
-
-fn CfdInitializeEstimateFee(
-  handle: *const c_void,
-  fee_handle: *mut *mut c_void,
-  is_elements: bool,
-) -> c_int;
-fn CfdAddTxInForEstimateFee(
-  handle: *const c_void,
-  fee_handle: *const c_void,
-  txid: *const i8,
-  vout: c_uint,
-  descriptor: *const i8,
-  asset: *const i8,
-  is_issuance: bool,
-  is_blind_issuance: bool,
-  is_pegin: bool,
-  pegin_btc_tx_size: c_uint,
-  fedpeg_script: *const i8,
-) -> c_int;
-fn CfdAddTxInTemplateForEstimateFee(
-  handle: *const c_void,
-  fee_handle: *const c_void,
-  txid: *const i8,
-  vout: c_uint,
-  descriptor: *const i8,
-  asset: *const i8,
-  is_issuance: bool,
-  is_blind_issuance: bool,
-  is_pegin: bool,
-  pegin_btc_tx_size: c_uint,
-  fedpeg_script: *const i8,
-  scriptsig_template: *const i8,
-) -> c_int;
-fn CfdSetOptionEstimateFee(
-  handle: *const c_void,
-  fee_handle: *const c_void,
-  key: c_int,
-  int64_value: c_longlong,
-  double_value: c_double,
-  bool_value: bool,
-) -> c_int;
-fn CfdFinalizeEstimateFee(
-  handle: *const c_void,
-  fee_handle: *const c_void,
-  tx_hex: *const i8,
-  fee_asset: *const i8,
-  tx_fee: *mut c_longlong,
-  utxo_fee: *mut c_longlong,
-  is_blind: bool,
-  effective_fee_rate: c_double,
-) -> c_int;
-fn CfdFreeEstimateFeeHandle(handle: *const c_void, fee_handle: *const c_void) -> c_int;
-*/
+  pub fn CfdInitializeCoinSelection(
+    handle: *const c_void,
+    utxo_count: c_uint,
+    target_asset_count: c_uint,
+    fee_asset: *const i8,
+    tx_fee_amount: c_longlong,
+    effective_fee_rate: c_double,
+    long_term_fee_rate: c_double,
+    dust_fee_rate: c_double,
+    knapsack_min_change: c_longlong,
+    coin_select_handle: *mut *mut c_void,
+  ) -> c_int;
+  pub fn CfdAddCoinSelectionUtxo(
+    handle: *const c_void,
+    coin_select_handle: *const c_void,
+    utxo_index: c_int,
+    txid: *const i8,
+    vout: c_uint,
+    amount: c_longlong,
+    asset: *const i8,
+    descriptor: *const i8,
+  ) -> c_int;
+  pub fn CfdAddCoinSelectionUtxoTemplate(
+    handle: *const c_void,
+    coin_select_handle: *const c_void,
+    utxo_index: c_int,
+    txid: *const i8,
+    vout: c_uint,
+    amount: c_longlong,
+    asset: *const i8,
+    descriptor: *const i8,
+    scriptsig_template: *const i8,
+  ) -> c_int;
+  pub fn CfdAddCoinSelectionAmount(
+    handle: *const c_void,
+    coin_select_handle: *const c_void,
+    asset_index: c_uint,
+    amount: c_longlong,
+    asset: *const i8,
+  ) -> c_int;
+  pub fn CfdSetOptionCoinSelection(
+    handle: *const c_void,
+    coin_select_handle: *const c_void,
+    key: c_int,
+    int64_value: c_longlong,
+    double_value: c_double,
+    bool_value: bool,
+  ) -> c_int;
+  pub fn CfdFinalizeCoinSelection(
+    handle: *const c_void,
+    coin_select_handle: *const c_void,
+    utxo_fee_amount: *mut c_longlong,
+  ) -> c_int;
+  pub fn CfdGetSelectedCoinIndex(
+    handle: *const c_void,
+    coin_select_handle: *const c_void,
+    index: c_uint,
+    utxo_index: *mut c_int,
+  ) -> c_int;
+  pub fn CfdGetSelectedCoinAssetAmount(
+    handle: *const c_void,
+    coin_select_handle: *const c_void,
+    asset_index: c_uint,
+    amount: *mut c_longlong,
+  ) -> c_int;
+  pub fn CfdFreeCoinSelectionHandle(handle: *const c_void, coin_select_handle: *const c_void) -> c_int;
 }

@@ -19,14 +19,25 @@ use std::result::Result::{Err, Ok};
 use std::str::FromStr;
 
 use self::cfd_sys::{
-  CfdAddMultisigSignData, CfdAddMultisigSignDataToDer, CfdAddPubkeyHashSign, CfdAddScriptHashSign,
-  CfdAddSignWithPrivkeySimple, CfdAddTransactionInput, CfdAddTransactionOutput, CfdAddTxSign,
-  CfdCreateSighash, CfdFinalizeMultisigSign, CfdFinalizeTransaction, CfdFreeMultisigSignHandle,
-  CfdFreeTransactionHandle, CfdGetTxIn, CfdGetTxInCount, CfdGetTxInIndex, CfdGetTxInWitness,
+  CfdAddCoinSelectionAmount, CfdAddCoinSelectionUtxoTemplate, CfdAddMultisigSignData,
+  CfdAddMultisigSignDataToDer, CfdAddPubkeyHashSign, CfdAddScriptHashSign,
+  CfdAddSignWithPrivkeySimple, CfdAddTargetAmountForFundRawTx, CfdAddTransactionInput,
+  CfdAddTransactionOutput, CfdAddTxInTemplateForEstimateFee, CfdAddTxInTemplateForFundRawTx,
+  CfdAddTxSign, CfdAddUtxoTemplateForFundRawTx, CfdCreateSighash, CfdFinalizeCoinSelection,
+  CfdFinalizeEstimateFee, CfdFinalizeFundRawTx, CfdFinalizeMultisigSign, CfdFinalizeTransaction,
+  CfdFreeCoinSelectionHandle, CfdFreeEstimateFeeHandle, CfdFreeFundRawTxHandle,
+  CfdFreeMultisigSignHandle, CfdFreeTransactionHandle, CfdGetAppendTxOutFundRawTx,
+  CfdGetSelectedCoinIndex, CfdGetTxIn, CfdGetTxInCount, CfdGetTxInIndex, CfdGetTxInWitness,
   CfdGetTxInWitnessCount, CfdGetTxInfo, CfdGetTxOut, CfdGetTxOutCount, CfdGetTxOutIndex,
-  CfdInitializeMultisigSign, CfdInitializeTransaction, CfdUpdateTxOutAmount, CfdVerifySignature,
-  CfdVerifyTxSign,
+  CfdInitializeCoinSelection, CfdInitializeEstimateFee, CfdInitializeFundRawTx,
+  CfdInitializeMultisigSign, CfdInitializeTransaction, CfdSetOptionFundRawTx, CfdUpdateTxOutAmount,
+  CfdVerifySignature, CfdVerifyTxSign,
 };
+
+// fund option
+// const OPT_DUST_FEE_RATE: i32 = 2;
+// const OPT_LONG_TERM_FEE_RATE: i32 = 3;
+// const OPT_KNAPSACK_MIN_CHANGE: i32 = 4;
 
 /// disable locktime
 pub const SEQUENCE_LOCK_TIME_DISABLE: u32 = 0xffffffff;
@@ -345,6 +356,163 @@ impl Default for UtxoData {
       amount: 0,
       descriptor: Descriptor::default(),
       scriptsig_template: Script::default(),
+    }
+  }
+}
+
+/// A container that stores coin selection data.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct CoinSelectionData {
+  pub select_utxo_list: Vec<UtxoData>,
+  pub utxo_fee_amount: i64,
+}
+
+impl CoinSelectionData {
+  pub fn new(select_utxo_list: Vec<UtxoData>, utxo_fee_amount: i64) -> CoinSelectionData {
+    CoinSelectionData {
+      select_utxo_list,
+      utxo_fee_amount,
+    }
+  }
+
+  pub fn get_total_amount(&self) -> i64 {
+    let mut total = 0;
+    for utxo in self.select_utxo_list.iter() {
+      total += utxo.amount;
+    }
+    total
+  }
+}
+
+impl Default for CoinSelectionData {
+  fn default() -> CoinSelectionData {
+    CoinSelectionData {
+      select_utxo_list: vec![],
+      utxo_fee_amount: 0,
+    }
+  }
+}
+
+/// A container that stores transaction fee.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FeeData {
+  pub tx_fee: i64,
+  pub utxo_fee: i64,
+}
+
+impl FeeData {
+  pub fn new(tx_fee: i64, utxo_fee: i64) -> FeeData {
+    FeeData { tx_fee, utxo_fee }
+  }
+
+  pub fn get_total_fee(&self) -> i64 {
+    self.tx_fee + self.utxo_fee
+  }
+}
+
+impl fmt::Display for FeeData {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "fee[tx:{}, utxo:{}]", &self.tx_fee, self.utxo_fee)
+  }
+}
+
+impl Default for FeeData {
+  fn default() -> FeeData {
+    FeeData::new(0, 0)
+  }
+}
+
+/// A container that stores transaction fee.
+#[derive(Debug, PartialEq, Clone)]
+pub struct FeeOption {
+  pub fee_rate: f64,
+  pub long_term_fee_rate: f64,
+  pub dust_fee_rate: f64,
+  pub knapsack_min_change: i64,
+}
+
+impl FeeOption {
+  pub fn new(network: &Network) -> FeeOption {
+    match network {
+      Network::LiquidV1 | Network::ElementsRegtest => FeeOption {
+        fee_rate: 0.11,
+        long_term_fee_rate: 1.0,
+        dust_fee_rate: 3.0,
+        knapsack_min_change: -1,
+      },
+      _ => FeeOption {
+        fee_rate: 2.0,
+        long_term_fee_rate: 20.0,
+        dust_fee_rate: 3.0,
+        knapsack_min_change: -1,
+      },
+    }
+  }
+}
+
+impl Default for FeeOption {
+  fn default() -> FeeOption {
+    FeeOption::new(&Network::Mainnet)
+  }
+}
+
+/// A container that stores fund raw transaction option.
+#[derive(Debug, PartialEq, Clone)]
+pub struct FundTargetOption {
+  pub target_amount: i64,
+  pub target_asset: String,
+  pub reserved_address: Address,
+}
+
+impl FundTargetOption {
+  pub fn from_amount(amount: i64, address: &Address) -> FundTargetOption {
+    FundTargetOption {
+      target_amount: amount,
+      target_asset: String::default(),
+      reserved_address: address.clone(),
+    }
+  }
+
+  pub fn from_asset(amount: i64, asset: &str, address: &Address) -> FundTargetOption {
+    FundTargetOption {
+      target_amount: amount,
+      target_asset: asset.to_string(),
+      reserved_address: address.clone(),
+    }
+  }
+}
+
+impl Default for FundTargetOption {
+  fn default() -> FundTargetOption {
+    FundTargetOption {
+      target_amount: 0,
+      target_asset: String::default(),
+      reserved_address: Address::default(),
+    }
+  }
+}
+
+/// A container that stores fund transaction data.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FundTransactionData {
+  pub reserved_address_list: Vec<Address>,
+  pub fee_amount: i64,
+}
+
+impl FundTransactionData {
+  pub fn new(reserved_address_list: Vec<Address>, fee_amount: i64) -> FundTransactionData {
+    FundTransactionData {
+      reserved_address_list,
+      fee_amount,
+    }
+  }
+}
+
+impl Default for FundTransactionData {
+  fn default() -> FundTransactionData {
+    FundTransactionData {
+      reserved_address_list: vec![],
+      fee_amount: 0,
     }
   }
 }
@@ -1246,6 +1414,81 @@ impl Transaction {
       &option,
     )
   }
+
+  /// Estimate fee on the transaction.
+  ///
+  /// # Arguments
+  /// * `txin_list` - Transaction input utxo data.
+  /// * `fee_rate` - A transaction fee rate.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Amount, Descriptor, Network, OutPoint, Pubkey, Transaction, UtxoData};
+  /// use std::str::FromStr;
+  /// let tx_str = "0200000002bdebed9413554bb95fffbdf436112c923c334a6850509ae7794d410524b061740000000000ffffffffc16d35d26589dfd54634181aa4a290cb9e06a716ea68620be05fbc46f1e197140100000000ffffffff0200e1f50500000000160014751e76e8199196d454941c45d1b3a323f1433bd620544771000000001600144dc2412fe3dc759e3830b6fb360264c8ce0abe3800000000";
+  /// let pubkey = Pubkey::from_str("03d34d21d3017acdfb033e010574fb73dc83639f97145d83965fe1b19a4c8e2b6b").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "7461b02405414d79e79a5050684a333c922c1136f4bdff5fb94b551394edebbd",
+  ///   0).expect("Fail");
+  /// let descriptor = Descriptor::p2wpkh(&pubkey, &Network::Mainnet).expect("Fail");
+  /// let tx = Transaction::from_str(tx_str).expect("Fail");
+  /// let amount = Amount::new(60000);
+  /// let utxo = UtxoData::from_descriptor(&outpoint, amount.as_satoshi_amount(), &descriptor);
+  /// let fee_rate = 20.0;
+  /// let fee_data = tx.estimate_fee(&[utxo], fee_rate).expect("Fail");
+  /// ```
+  pub fn estimate_fee(&self, txin_list: &[UtxoData], fee_rate: f64) -> Result<FeeData, CfdError> {
+    let ope = TransactionOperation::new(&Network::Mainnet);
+    ope.estimate_fee(&hex_from_bytes(&self.tx), txin_list, fee_rate)
+  }
+
+  /// Select utxo until target amount.
+  ///
+  /// # Arguments
+  /// * `utxo_list` - Utxo data list.
+  /// * `tx_fee_amount` - A transaction fee amount.
+  /// * `target_amount` - A selection amount.
+  /// * `fee_param` - A fee option parameter.
+  pub fn select_coins(
+    utxo_list: &[UtxoData],
+    tx_fee_amount: i64,
+    target_amount: i64,
+    fee_param: &FeeOption,
+  ) -> Result<CoinSelectionData, CfdError> {
+    let ope = TransactionOperation::new(&Network::Mainnet);
+    ope.select_coins(utxo_list, tx_fee_amount, target_amount, fee_param)
+  }
+
+  /// Fund transaction.
+  ///
+  /// # Arguments
+  /// * `txin_list` - Transaction input utxo data list.
+  /// * `utxo_list` - Utxo data list.
+  /// * `target_data` - A selection target data.
+  /// * `fee_param` - A fee option parameter.
+  /// * `fund_data` - (output) A fund transaction's response data.
+  pub fn fund_raw_transaction(
+    &self,
+    txin_list: &[UtxoData],
+    utxo_list: &[UtxoData],
+    target_data: &FundTargetOption,
+    fee_param: &FeeOption,
+    fund_data: &mut FundTransactionData,
+  ) -> Result<Transaction, CfdError> {
+    let mut ope = TransactionOperation::new(&Network::Mainnet);
+    let fund_result = ope.fund_raw_transaction(
+      txin_list,
+      utxo_list,
+      &hex_from_bytes(&self.tx),
+      target_data,
+      fee_param,
+    )?;
+    let tx = ope.get_last_tx();
+    let tx_obj = Transaction::from_str(tx)?;
+    *fund_data = fund_result;
+    Ok(tx_obj)
+  }
 }
 
 impl FromStr for Transaction {
@@ -1715,6 +1958,10 @@ impl TransactionOperation {
     let sign_data_hex = alloc_c_string(&sign_data.to_hex())?;
     let handle = ErrorHandle::new()?;
     let sighash_type = sign_data.get_sighash_type();
+    let use_der_encoded = match sign_data.to_slice().len() <= 65 {
+      true => sign_data.can_use_der_encode(),
+      _ => false,
+    };
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdAddTxSign(
@@ -1725,7 +1972,7 @@ impl TransactionOperation {
         outpoint.vout,
         hash_type.to_c_value(),
         sign_data_hex.as_ptr(),
-        sign_data.can_use_der_encode(),
+        use_der_encoded,
         sighash_type.to_c_value(),
         sighash_type.is_anyone_can_pay(),
         clear_stack,
@@ -1758,6 +2005,10 @@ impl TransactionOperation {
     let signature_hex = alloc_c_string(&signature.to_hex())?;
     let handle = ErrorHandle::new()?;
     let sighash_type = signature.get_sighash_type();
+    let use_der_encoded = match signature.to_slice().len() <= 65 {
+      true => signature.can_use_der_encode(),
+      _ => false,
+    };
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdAddPubkeyHashSign(
@@ -1769,7 +2020,7 @@ impl TransactionOperation {
         hash_type.to_c_value(),
         pubkey_hex.as_ptr(),
         signature_hex.as_ptr(),
-        signature.can_use_der_encode(),
+        use_der_encoded,
         sighash_type.to_c_value(),
         sighash_type.is_anyone_can_pay(),
         &mut output,
@@ -1892,8 +2143,12 @@ impl TransactionOperation {
               let signature = alloc_c_string(&sign_data.to_hex())?;
               let related_pubkey = alloc_c_string(&sign_data.get_related_pubkey().to_hex())?;
               let sighash_type = sign_data.get_sighash_type();
+              let use_der_encoded = match sign_data.to_slice().len() <= 65 {
+                true => sign_data.can_use_der_encode(),
+                _ => false,
+              };
               let error_code = unsafe {
-                if sign_data.can_use_der_encode() {
+                if use_der_encoded {
                   CfdAddMultisigSignDataToDer(
                     handle.as_handle(),
                     multisig_handle,
@@ -2009,8 +2264,6 @@ impl TransactionOperation {
     let script_hex = alloc_c_string(&locking_script.to_hex())?;
     let value_byte_hex = alloc_c_string(&option.value_byte.to_hex())?;
     let handle = ErrorHandle::new()?;
-    println!("locking_script:{}", locking_script.to_hex());
-    println!("address_type:{}", address_type);
     let error_code = unsafe {
       CfdVerifyTxSign(
         handle.as_handle(),
@@ -2027,6 +2280,374 @@ impl TransactionOperation {
     };
     let result = match error_code {
       0 => Ok(()),
+      _ => Err(handle.get_error(error_code)),
+    };
+    handle.free_handle();
+    result
+  }
+
+  pub fn estimate_fee(
+    &self,
+    tx: &str,
+    txin_list: &[UtxoData],
+    fee_rate: f64,
+  ) -> Result<FeeData, CfdError> {
+    let tx_str = alloc_c_string(tx)?;
+    let empty_str = alloc_c_string("")?;
+    let handle = ErrorHandle::new()?;
+    let mut fee_handle: *mut c_void = ptr::null_mut();
+    let error_code =
+      unsafe { CfdInitializeEstimateFee(handle.as_handle(), &mut fee_handle, false) };
+    let result = match error_code {
+      0 => {
+        let ret = {
+          for txin_data in txin_list {
+            let _err = {
+              let txid = alloc_c_string(&txin_data.outpoint.txid.to_hex())?;
+              let descriptor = alloc_c_string(&txin_data.descriptor.to_str())?;
+              let sig_tmpl = alloc_c_string(&txin_data.scriptsig_template.to_hex())?;
+              let error_code = unsafe {
+                CfdAddTxInTemplateForEstimateFee(
+                  handle.as_handle(),
+                  fee_handle,
+                  txid.as_ptr(),
+                  txin_data.outpoint.vout,
+                  descriptor.as_ptr(),
+                  empty_str.as_ptr(),
+                  false,
+                  false,
+                  false,
+                  0,
+                  empty_str.as_ptr(),
+                  sig_tmpl.as_ptr(),
+                )
+              };
+              match error_code {
+                0 => Ok(()),
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
+          }
+          let mut fee_data = FeeData::default();
+          let error_code = unsafe {
+            CfdFinalizeEstimateFee(
+              handle.as_handle(),
+              fee_handle,
+              tx_str.as_ptr(),
+              empty_str.as_ptr(),
+              &mut fee_data.tx_fee,
+              &mut fee_data.utxo_fee,
+              false,
+              fee_rate,
+            )
+          };
+          match error_code {
+            0 => Ok(fee_data),
+            _ => Err(handle.get_error(error_code)),
+          }
+        };
+        unsafe {
+          CfdFreeEstimateFeeHandle(handle.as_handle(), fee_handle);
+        }
+        ret
+      }
+      _ => Err(handle.get_error(error_code)),
+    };
+    handle.free_handle();
+    result
+  }
+
+  pub fn select_coins(
+    &self,
+    utxo_list: &[UtxoData],
+    tx_fee_amount: i64,
+    target_amount: i64,
+    fee_param: &FeeOption,
+  ) -> Result<CoinSelectionData, CfdError> {
+    let empty_str = alloc_c_string("")?;
+    let handle = ErrorHandle::new()?;
+    let mut coin_handle: *mut c_void = ptr::null_mut();
+    let error_code = unsafe {
+      CfdInitializeCoinSelection(
+        handle.as_handle(),
+        utxo_list.len() as c_uint,
+        1,
+        empty_str.as_ptr(),
+        tx_fee_amount,
+        fee_param.fee_rate,
+        fee_param.long_term_fee_rate,
+        fee_param.dust_fee_rate,
+        fee_param.knapsack_min_change,
+        &mut coin_handle,
+      )
+    };
+    let result = match error_code {
+      0 => {
+        let ret = {
+          for (index, utxo_data) in utxo_list.iter().enumerate() {
+            let _err = {
+              let txid = alloc_c_string(&utxo_data.outpoint.txid.to_hex())?;
+              let descriptor = alloc_c_string(&utxo_data.descriptor.to_str())?;
+              let sig_tmpl = alloc_c_string(&utxo_data.scriptsig_template.to_hex())?;
+              let error_code = unsafe {
+                CfdAddCoinSelectionUtxoTemplate(
+                  handle.as_handle(),
+                  coin_handle,
+                  index as i32,
+                  txid.as_ptr(),
+                  utxo_data.outpoint.vout,
+                  utxo_data.amount,
+                  empty_str.as_ptr(),
+                  descriptor.as_ptr(),
+                  sig_tmpl.as_ptr(),
+                )
+              };
+              match error_code {
+                0 => Ok(()),
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
+          }
+          let _ret = {
+            let error_code = unsafe {
+              CfdAddCoinSelectionAmount(
+                handle.as_handle(),
+                coin_handle,
+                0,
+                target_amount,
+                empty_str.as_ptr(),
+              )
+            };
+            match error_code {
+              0 => Ok(()),
+              _ => Err(handle.get_error(error_code)),
+            }
+          }?;
+          let utxo_fee_amount = {
+            let mut utxo_fee_amount = 0;
+            let error_code = unsafe {
+              CfdFinalizeCoinSelection(handle.as_handle(), coin_handle, &mut utxo_fee_amount)
+            };
+            match error_code {
+              0 => Ok(utxo_fee_amount),
+              _ => Err(handle.get_error(error_code)),
+            }
+          }?;
+          let mut select_utxo_list: Vec<UtxoData> = vec![];
+          let mut indexes: Vec<i32> = vec![];
+          indexes.reserve(utxo_list.len());
+          let mut index: usize = 0;
+          if utxo_fee_amount > 0 {
+            while index < utxo_list.len() {
+              let utxo_index = {
+                let mut utxo_index = 0;
+                let error_code = unsafe {
+                  CfdGetSelectedCoinIndex(
+                    handle.as_handle(),
+                    coin_handle,
+                    index as u32,
+                    &mut utxo_index,
+                  )
+                };
+                match error_code {
+                  0 => {
+                    if (utxo_index == -1) || (utxo_list.len() > (utxo_index as usize)) {
+                      Ok(utxo_index)
+                    } else {
+                      Err(CfdError::Internal("utxoIndex maximum over.".to_string()))
+                    }
+                  }
+                  _ => Err(handle.get_error(error_code)),
+                }
+              }?;
+              if utxo_index < 0 {
+                break;
+              }
+              indexes.push(utxo_index);
+              index += 1;
+            }
+          }
+
+          select_utxo_list.reserve(indexes.len());
+          for utxo_index in indexes {
+            select_utxo_list.push(utxo_list[utxo_index as usize].clone());
+          }
+          Ok(CoinSelectionData::new(select_utxo_list, utxo_fee_amount))
+        };
+        unsafe {
+          CfdFreeCoinSelectionHandle(handle.as_handle(), coin_handle);
+        }
+        ret
+      }
+      _ => Err(handle.get_error(error_code)),
+    };
+    handle.free_handle();
+    result
+  }
+
+  pub fn fund_raw_transaction(
+    &mut self,
+    txin_list: &[UtxoData],
+    utxo_list: &[UtxoData],
+    tx: &str,
+    target_data: &FundTargetOption,
+    fee_param: &FeeOption,
+  ) -> Result<FundTransactionData, CfdError> {
+    let empty_str = alloc_c_string("")?;
+    let tx_hex = alloc_c_string(tx)?;
+    let handle = ErrorHandle::new()?;
+    let mut fund_handle: *mut c_void = ptr::null_mut();
+    let error_code = unsafe {
+      CfdInitializeFundRawTx(
+        handle.as_handle(),
+        Network::Mainnet.to_c_value(),
+        1,
+        empty_str.as_ptr(),
+        &mut fund_handle,
+      )
+    };
+    let result = match error_code {
+      0 => {
+        let ret = {
+          for txin_data in txin_list {
+            let _err = {
+              let txid = alloc_c_string(&txin_data.outpoint.txid.to_hex())?;
+              let descriptor = alloc_c_string(&txin_data.descriptor.to_str())?;
+              let sig_tmpl = alloc_c_string(&txin_data.scriptsig_template.to_hex())?;
+              let error_code = unsafe {
+                CfdAddTxInTemplateForFundRawTx(
+                  handle.as_handle(),
+                  fund_handle,
+                  txid.as_ptr(),
+                  txin_data.outpoint.vout,
+                  txin_data.amount,
+                  descriptor.as_ptr(),
+                  empty_str.as_ptr(),
+                  false,
+                  false,
+                  false,
+                  0,
+                  empty_str.as_ptr(),
+                  sig_tmpl.as_ptr(),
+                )
+              };
+              match error_code {
+                0 => Ok(()),
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
+          }
+          for utxo_data in utxo_list {
+            let _err = {
+              let txid = alloc_c_string(&utxo_data.outpoint.txid.to_hex())?;
+              let descriptor = alloc_c_string(&utxo_data.descriptor.to_str())?;
+              let sig_tmpl = alloc_c_string(&utxo_data.scriptsig_template.to_hex())?;
+              let error_code = unsafe {
+                CfdAddUtxoTemplateForFundRawTx(
+                  handle.as_handle(),
+                  fund_handle,
+                  txid.as_ptr(),
+                  utxo_data.outpoint.vout,
+                  utxo_data.amount,
+                  descriptor.as_ptr(),
+                  empty_str.as_ptr(),
+                  sig_tmpl.as_ptr(),
+                )
+              };
+              match error_code {
+                0 => Ok(()),
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
+          }
+          let _ret = {
+            let addr = alloc_c_string(target_data.reserved_address.to_str())?;
+            let error_code = unsafe {
+              CfdAddTargetAmountForFundRawTx(
+                handle.as_handle(),
+                fund_handle,
+                0,
+                target_data.target_amount,
+                empty_str.as_ptr(),
+                addr.as_ptr(),
+              )
+            };
+            match error_code {
+              0 => Ok(()),
+              _ => Err(handle.get_error(error_code)),
+            }
+          }?;
+
+          set_fund_tx_option(
+            &handle,
+            fund_handle,
+            2,
+            ptr::null(),
+            &fee_param.dust_fee_rate,
+          )?;
+          set_fund_tx_option(
+            &handle,
+            fund_handle,
+            3,
+            ptr::null(),
+            &fee_param.long_term_fee_rate,
+          )?;
+          set_fund_tx_option(
+            &handle,
+            fund_handle,
+            4,
+            &fee_param.knapsack_min_change,
+            ptr::null(),
+          )?;
+
+          let mut tx_fee = 0;
+          let mut append_txout_count = 0;
+          let output_tx = {
+            let mut output: *mut c_char = ptr::null_mut();
+            let error_code = unsafe {
+              CfdFinalizeFundRawTx(
+                handle.as_handle(),
+                fund_handle,
+                tx_hex.as_ptr(),
+                fee_param.fee_rate,
+                &mut tx_fee,
+                &mut append_txout_count,
+                &mut output,
+              )
+            };
+            match error_code {
+              0 => unsafe { collect_cstring_and_free(output) },
+              _ => Err(handle.get_error(error_code)),
+            }
+          }?;
+          let mut used_addr_list: Vec<Address> = vec![];
+          used_addr_list.reserve(append_txout_count as usize);
+          let mut index = 0;
+          while index < append_txout_count {
+            let address = {
+              let mut output: *mut c_char = ptr::null_mut();
+              let error_code = unsafe {
+                CfdGetAppendTxOutFundRawTx(handle.as_handle(), fund_handle, index, &mut output)
+              };
+              match error_code {
+                0 => {
+                  let addr_str = unsafe { collect_cstring_and_free(output) }?;
+                  Address::from_str(&addr_str)
+                }
+                _ => Err(handle.get_error(error_code)),
+              }
+            }?;
+            used_addr_list.push(address);
+            index += 1;
+          }
+          self.last_tx = output_tx;
+          Ok(FundTransactionData::new(used_addr_list, tx_fee))
+        };
+        unsafe {
+          CfdFreeFundRawTxHandle(handle.as_handle(), fund_handle);
+        }
+        ret
+      }
       _ => Err(handle.get_error(error_code)),
     };
     handle.free_handle();
@@ -2202,5 +2823,34 @@ impl TransactionOperation {
     };
     handle.free_handle();
     result
+  }
+}
+
+fn set_fund_tx_option(
+  handle: &ErrorHandle,
+  fund_handle: *const c_void,
+  key: i32,
+  long_value: *const i64,
+  double_value: *const f64,
+) -> Result<(), CfdError> {
+  let error_code = unsafe {
+    let longlong_value = if long_value.is_null() { 0 } else { *long_value };
+    let float_value = if double_value.is_null() {
+      0.0
+    } else {
+      *double_value
+    };
+    CfdSetOptionFundRawTx(
+      handle.as_handle(),
+      fund_handle,
+      key,
+      longlong_value,
+      float_value,
+      false,
+    )
+  };
+  match error_code {
+    0 => Ok(()),
+    _ => Err(handle.get_error(error_code)),
   }
 }
