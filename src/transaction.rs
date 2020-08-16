@@ -374,6 +374,14 @@ impl CoinSelectionData {
       utxo_fee_amount,
     }
   }
+
+  pub fn get_total_amount(&self) -> i64 {
+    let mut total = 0;
+    for utxo in self.select_utxo_list.iter() {
+      total += utxo.amount;
+    }
+    total
+  }
 }
 
 impl Default for CoinSelectionData {
@@ -2256,8 +2264,6 @@ impl TransactionOperation {
     let script_hex = alloc_c_string(&locking_script.to_hex())?;
     let value_byte_hex = alloc_c_string(&option.value_byte.to_hex())?;
     let handle = ErrorHandle::new()?;
-    println!("locking_script:{}", locking_script.to_hex());
-    println!("address_type:{}", address_type);
     let error_code = unsafe {
       CfdVerifyTxSign(
         handle.as_handle(),
@@ -2366,6 +2372,7 @@ impl TransactionOperation {
         handle.as_handle(),
         utxo_list.len() as c_uint,
         1,
+        empty_str.as_ptr(),
         tx_fee_amount,
         fee_param.fee_rate,
         fee_param.long_term_fee_rate,
@@ -2430,33 +2437,35 @@ impl TransactionOperation {
           let mut indexes: Vec<i32> = vec![];
           indexes.reserve(utxo_list.len());
           let mut index: usize = 0;
-          while index < utxo_list.len() {
-            let utxo_index = {
-              let mut utxo_index = 0;
-              let error_code = unsafe {
-                CfdGetSelectedCoinIndex(
-                  handle.as_handle(),
-                  coin_handle,
-                  index as u32,
-                  &mut utxo_index,
-                )
-              };
-              match error_code {
-                0 => {
-                  if utxo_list.len() <= (utxo_index as usize) {
-                    Err(CfdError::Internal("utxoIndex maximum over.".to_string()))
-                  } else {
-                    Ok(utxo_index)
+          if utxo_fee_amount > 0 {
+            while index < utxo_list.len() {
+              let utxo_index = {
+                let mut utxo_index = 0;
+                let error_code = unsafe {
+                  CfdGetSelectedCoinIndex(
+                    handle.as_handle(),
+                    coin_handle,
+                    index as u32,
+                    &mut utxo_index,
+                  )
+                };
+                match error_code {
+                  0 => {
+                    if (utxo_index == -1) || (utxo_list.len() > (utxo_index as usize)) {
+                      Ok(utxo_index)
+                    } else {
+                      Err(CfdError::Internal("utxoIndex maximum over.".to_string()))
+                    }
                   }
+                  _ => Err(handle.get_error(error_code)),
                 }
-                _ => Err(handle.get_error(error_code)),
+              }?;
+              if utxo_index < 0 {
+                break;
               }
-            }?;
-            if utxo_index < 0 {
-              break;
+              indexes.push(utxo_index);
+              index += 1;
             }
-            indexes.push(utxo_index);
-            index += 1;
           }
 
           select_utxo_list.reserve(indexes.len());
