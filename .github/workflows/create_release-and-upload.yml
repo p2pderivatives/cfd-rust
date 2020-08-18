@@ -29,7 +29,7 @@ jobs:
           - First Change
           - Second Change
         draft: false
-        prerelease: false
+        prerelease: true
 #      continue-on-error: true
     - name: write upload url
       env:
