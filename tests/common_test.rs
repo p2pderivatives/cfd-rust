@@ -24,6 +24,7 @@ mod tests {
     );
     let byte_obj = byte_obj_ret.unwrap();
     assert_eq!(byte_hex, byte_obj.to_hex());
+    assert_eq!(10, byte_obj.len());
     let byte_serialize_ret = byte_obj.serialize();
     assert!(
       byte_serialize_ret.is_ok(),

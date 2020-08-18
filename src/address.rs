@@ -374,6 +374,34 @@ impl Address {
     result
   }
 
+  /// Update address type. (for p2sh-segwit)
+  ///
+  /// # Arguments
+  /// * `address_type` - A target address type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, AddressType, Network, Script};
+  /// let script_hex = "a91405bc4d5d12925f008cef06ba387ade16a49d7a3187";
+  /// let script = Script::from_hex(script_hex).expect("fail");
+  /// let mut p2sh_addr = Address::from_locking_script(
+  ///   &script, &Network::Mainnet).expect("Fail");
+  /// let addr = p2sh_addr.update_address_type(&AddressType::P2shP2wpkhAddress);
+  /// ```
+  pub fn update_address_type(mut self, address_type: &AddressType) -> Address {
+    match address_type {
+      AddressType::P2shP2wpkhAddress | AddressType::P2shP2wshAddress => {
+        if self.address_type == AddressType::P2shAddress {
+          self.address_type = *address_type;
+          self.witness_version = address_type.get_witness_version();
+        }
+        self
+      }
+      _ => self,
+    }
+  }
+
   /// Create multisig address.
   ///
   /// # Arguments
@@ -638,7 +666,7 @@ impl Address {
   /// let valid = addr.valid();
   /// ```
   pub fn valid(&self) -> bool {
-    if !self.address.is_empty() {
+    if self.address.is_empty() {
       false
     } else if let Ok(_result) = Address::from_string(&self.address) {
       true

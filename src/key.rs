@@ -330,6 +330,14 @@ impl Privkey {
     &self.wif
   }
 
+  pub fn to_network(&self) -> &Network {
+    &self.net_type
+  }
+
+  pub fn is_compressed_pubkey(&self) -> bool {
+    self.is_compressed
+  }
+
   /// Generate a wallet import format string.
   ///
   /// # Arguments
@@ -349,7 +357,10 @@ impl Privkey {
     network_type: &Network,
     is_compressed: bool,
   ) -> Result<String, CfdError> {
-    if !self.wif.is_empty() {
+    if (!self.wif.is_empty())
+      && (*network_type == self.net_type)
+      && (is_compressed == self.is_compressed)
+    {
       return Ok(self.to_wif().to_string());
     }
     let privkey = alloc_c_string(&self.to_hex())?;
@@ -399,10 +410,7 @@ impl Privkey {
   /// let bytes = [1; 32];
   /// let key_wif = Privkey::generate_pubkey(&bytes, true).expect("Fail");
   /// ```
-  pub fn generate_pubkey(
-    key: &[u8; PRIVKEY_SIZE],
-    is_compressed: bool,
-  ) -> Result<Pubkey, CfdError> {
+  pub fn generate_pubkey(key: &[u8], is_compressed: bool) -> Result<Pubkey, CfdError> {
     let privkey = alloc_c_string(&hex_from_bytes(key))?;
     let handle = ErrorHandle::new()?;
     let wif: *const i8 = ptr::null();
@@ -738,6 +746,11 @@ impl Pubkey {
   #[inline]
   pub fn to_hex(&self) -> String {
     hex_from_bytes(&self.key)
+  }
+
+  #[inline]
+  pub fn to_str(&self) -> String {
+    self.to_hex()
   }
 
   /// Get a compressed public key.
@@ -1650,5 +1663,11 @@ impl FromStr for SignParameter {
       Ok(byte_array) => Ok(SignParameter::from_vec(byte_array)),
       Err(e) => Err(e),
     }
+  }
+}
+
+impl Default for SignParameter {
+  fn default() -> SignParameter {
+    SignParameter::from_slice(&[])
   }
 }
