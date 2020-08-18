@@ -670,6 +670,10 @@ impl Transaction {
     &self.tx
   }
 
+  pub fn to_slice(&self) -> &[u8] {
+    &self.tx
+  }
+
   pub fn as_txid(&self) -> &Txid {
     &self.data.txid
   }
@@ -700,6 +704,23 @@ impl Transaction {
   /// ```
   pub fn new(version: u32, locktime: u32) -> Result<Transaction, CfdError> {
     Transaction::create_tx(version, locktime, &[], &[])
+  }
+
+  /// Get transaction from bytes.
+  ///
+  /// # Arguments
+  /// * `tx` - A transaction byte array.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Transaction;
+  /// let tx = Transaction::new(2, 0).expect("Fail");
+  /// let tx2 = Transaction::from_slice(tx.to_bytes()).expect("Fail");
+  /// ```
+  pub fn from_slice(tx: &[u8]) -> Result<Transaction, CfdError> {
+    let hex = hex_from_bytes(tx);
+    Transaction::from_str(&hex)
   }
 
   /// Create initial transaction.
@@ -801,11 +822,12 @@ impl Transaction {
   /// let tx2 = tx.update_amount(0, 60000).expect("Fail");
   /// ```
   pub fn update_amount(&self, index: u32, amount: i64) -> Result<Transaction, CfdError> {
-    let ope = TransactionOperation::new(&Network::Mainnet);
+    let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx = ope.update_output_amount(&hex_from_bytes(&self.tx), index, amount)?;
+    let data = ope.get_tx_data(ope.get_last_tx())?;
     let mut tx_obj = Transaction {
       tx,
-      data: self.data.clone(),
+      data,
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
@@ -971,9 +993,10 @@ impl Transaction {
     let tx = ope.add_pubkey_hash_sign(&tx_hex, outpoint, hash_type, pubkey, signature)?;
     let new_tx_hex = ope.get_last_tx();
     let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
+    let data = ope.get_tx_data(new_tx_hex)?;
     let mut tx_obj = Transaction {
       tx,
-      data: self.data.clone(),
+      data,
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
@@ -1026,9 +1049,10 @@ impl Transaction {
     let tx = ope.sign_with_privkey(&tx_hex, outpoint, hash_type, &key, &option, true)?;
     let new_tx_hex = ope.get_last_tx();
     let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
+    let data = ope.get_tx_data(new_tx_hex)?;
     let mut tx_obj = Transaction {
       tx,
-      data: self.data.clone(),
+      data,
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
@@ -1093,9 +1117,10 @@ impl Transaction {
     let tx = ope.add_multisig_sign(&tx_hex, outpoint, hash_type, redeem_script, signature_list)?;
     let new_tx_hex = ope.get_last_tx();
     let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
+    let data = ope.get_tx_data(new_tx_hex)?;
     let mut tx_obj = Transaction {
       tx,
-      data: self.data.clone(),
+      data,
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
@@ -1149,9 +1174,10 @@ impl Transaction {
     let tx = ope.add_sign(&tx_hex, outpoint, hash_type, sign_data, clear_stack)?;
     let new_tx_hex = ope.get_last_tx();
     let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
+    let data = ope.get_tx_data(new_tx_hex)?;
     let mut tx_obj = Transaction {
       tx,
-      data: self.data.clone(),
+      data,
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
@@ -1164,6 +1190,7 @@ impl Transaction {
   /// # Arguments
   /// * `outpoint` - A transaction input out-point.
   /// * `hash_type` - A transaction input hash type.
+  /// * `sign_list` - A transaction sign parameter list.
   /// * `redeem_script` - A redeem script.
   /// * `clear_stack` - Clear to already exist stack.
   ///
@@ -1193,24 +1220,33 @@ impl Transaction {
   /// let empty_sig = SignParameter::from_slice(&[]);
   /// let tx2 = tx.add_sign(&outpoint, &HashType::P2wpkh, &empty_sig, true).expect("Fail");
   /// let tx3 = tx2.add_sign(&outpoint, &HashType::P2wpkh, &signature, false).expect("Fail");
-  /// let signed_tx = tx3.add_script_hash_sign(&outpoint, &HashType::P2wsh, &script, false).expect("Fail");
+  /// let signed_tx = tx3.add_script_hash_sign(&outpoint, &HashType::P2wsh, &[], &script, false).expect("Fail");
   /// ```
   pub fn add_script_hash_sign(
     &self,
     outpoint: &OutPoint,
     hash_type: &HashType,
+    sign_list: &[SignParameter],
     redeem_script: &Script,
     clear_stack: bool,
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
     let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
-    let tx = ope.add_script_hash_sign(&tx_hex, outpoint, hash_type, redeem_script, clear_stack)?;
+    let tx = ope.add_script_hash_sign(
+      &tx_hex,
+      outpoint,
+      hash_type,
+      sign_list,
+      redeem_script,
+      clear_stack,
+    )?;
     let new_tx_hex = ope.get_last_tx();
     let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
+    let data = ope.get_tx_data(new_tx_hex)?;
     let mut tx_obj = Transaction {
       tx,
-      data: self.data.clone(),
+      data,
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
     };
@@ -1615,7 +1651,7 @@ impl TransactionOperation {
   }
 
   pub fn update_output_amount(
-    &self,
+    &mut self,
     tx: &str,
     index: u32,
     amount: i64,
@@ -1636,7 +1672,8 @@ impl TransactionOperation {
     let result = match error_code {
       0 => {
         let output_obj = unsafe { collect_cstring_and_free(output) }?;
-        Ok(byte_from_hex_unsafe(&output_obj))
+        self.last_tx = output_obj;
+        Ok(byte_from_hex_unsafe(&self.last_tx))
       }
       _ => Err(handle.get_error(error_code)),
     };
@@ -2043,34 +2080,74 @@ impl TransactionOperation {
     tx: &str,
     outpoint: &OutPoint,
     hash_type: &HashType,
+    sign_list: &[SignParameter],
     redeem_script: &Script,
     clear_stack: bool,
   ) -> Result<Vec<u8>, CfdError> {
-    let tx_str = alloc_c_string(tx)?;
+    let mut temp_tx = tx;
+    let mut temp_clear_stack = clear_stack;
     let txid = alloc_c_string(&outpoint.txid.to_hex())?;
     let script_hex = alloc_c_string(&redeem_script.to_hex())?;
     let handle = ErrorHandle::new()?;
-    let mut output: *mut c_char = ptr::null_mut();
-    let error_code = unsafe {
-      CfdAddScriptHashSign(
-        handle.as_handle(),
-        self.network.to_c_value(),
-        tx_str.as_ptr(),
-        txid.as_ptr(),
-        outpoint.vout,
-        hash_type.to_c_value(),
-        script_hex.as_ptr(),
-        clear_stack,
-        &mut output,
-      )
-    };
-    let result = match error_code {
-      0 => {
-        let output_obj = unsafe { collect_cstring_and_free(output) }?;
-        self.last_tx = output_obj;
-        Ok(byte_from_hex_unsafe(&self.last_tx))
+    let result = {
+      let mut tx_hex;
+      for sign_data in sign_list {
+        tx_hex = {
+          let tx_str = alloc_c_string(temp_tx)?;
+          let sign_data_hex = alloc_c_string(&sign_data.to_hex())?;
+          let use_der_encoded = match sign_data.to_slice().len() <= 65 {
+            true => sign_data.can_use_der_encode(),
+            _ => false,
+          };
+          let sighash_type = sign_data.get_sighash_type();
+          let mut output: *mut c_char = ptr::null_mut();
+          let error_code = unsafe {
+            CfdAddTxSign(
+              handle.as_handle(),
+              self.network.to_c_value(),
+              tx_str.as_ptr(),
+              txid.as_ptr(),
+              outpoint.vout,
+              hash_type.to_c_value(),
+              sign_data_hex.as_ptr(),
+              use_der_encoded,
+              sighash_type.to_c_value(),
+              sighash_type.is_anyone_can_pay(),
+              temp_clear_stack,
+              &mut output,
+            )
+          };
+          match error_code {
+            0 => unsafe { collect_cstring_and_free(output) },
+            _ => Err(handle.get_error(error_code)),
+          }
+        }?;
+        temp_tx = &tx_hex;
+        temp_clear_stack = false;
       }
-      _ => Err(handle.get_error(error_code)),
+      let tx_str = alloc_c_string(temp_tx)?;
+      let mut output: *mut c_char = ptr::null_mut();
+      let error_code = unsafe {
+        CfdAddScriptHashSign(
+          handle.as_handle(),
+          self.network.to_c_value(),
+          tx_str.as_ptr(),
+          txid.as_ptr(),
+          outpoint.vout,
+          hash_type.to_c_value(),
+          script_hex.as_ptr(),
+          temp_clear_stack,
+          &mut output,
+        )
+      };
+      match error_code {
+        0 => {
+          let output_obj = unsafe { collect_cstring_and_free(output) }?;
+          self.last_tx = output_obj;
+          Ok(byte_from_hex_unsafe(&self.last_tx))
+        }
+        _ => Err(handle.get_error(error_code)),
+      }
     };
     handle.free_handle();
     result

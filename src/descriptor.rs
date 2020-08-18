@@ -926,8 +926,8 @@ impl Descriptor {
   }
 
   pub fn get_key_data(&self) -> Result<&KeyData, CfdError> {
-    match self.has_key_hash() {
-      false => Err(CfdError::IllegalState("Not exist key data.".to_string())),
+    match self.root_data.key_data.key_type {
+      DescriptorKeyType::Null => Err(CfdError::IllegalState("Not exist key data.".to_string())),
       _ => Ok(&self.root_data.key_data),
     }
   }
@@ -1065,7 +1065,7 @@ impl Descriptor {
     };
     let first = &script_list[0];
     match first.hash_type {
-      HashType::P2sh | HashType::P2wpkh => {
+      HashType::P2sh | HashType::P2wsh => {
         if (script_list.len() > 1) && (script_list[1].hash_type == HashType::P2pkh) {
           desc.root_data = DescriptorScriptData::from_key_and_script(
             first.script_type,
@@ -1094,7 +1094,7 @@ impl Descriptor {
       _ => {}
     }
 
-    if (first.hash_type != HashType::P2sh) || (script_list.len() == 1) {
+    if script_list.len() == 1 {
       desc.root_data = first.clone();
       return desc;
     }
