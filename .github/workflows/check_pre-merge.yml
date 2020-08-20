@@ -18,37 +18,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - x86_64-pc-windows-msvc
-          - x86_64-apple-darwin
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
+        os: [windows-latest, macos-latest, ubuntu-20.04, ubuntu-18.04]
 
     steps:
       - uses: actions/checkout@v2
-      # https://github.com/actions/cache/blob/master/examples.md#rust---cargo
-#      - name: Cache cargo registry
-#        uses: actions/cache@v1
-#        with:
-#          path: ~/.cargo/registry
-#          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-#      - name: Cache cargo index
-#        uses: actions/cache@v1
-#        with:
-#          path: ~/.cargo/git
-#          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-#      - name: Cache cargo build
-#        uses: actions/cache@v1
-#        with:
-#          path: target
-#          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
