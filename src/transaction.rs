@@ -12,7 +12,6 @@ use crate::common::{
 use crate::descriptor::Descriptor;
 use crate::key::{KeyPair, Privkey, Pubkey, SigHashType, SignParameter};
 use crate::script::Script;
-use std::ffi::CString;
 use std::fmt;
 use std::ptr;
 use std::result::Result::{Err, Ok};
@@ -26,11 +25,13 @@ use self::cfd_sys::{
   CfdAddTxSign, CfdAddUtxoTemplateForFundRawTx, CfdCreateSighash, CfdFinalizeCoinSelection,
   CfdFinalizeEstimateFee, CfdFinalizeFundRawTx, CfdFinalizeMultisigSign, CfdFinalizeTransaction,
   CfdFreeCoinSelectionHandle, CfdFreeEstimateFeeHandle, CfdFreeFundRawTxHandle,
-  CfdFreeMultisigSignHandle, CfdFreeTransactionHandle, CfdGetAppendTxOutFundRawTx,
-  CfdGetSelectedCoinIndex, CfdGetTxIn, CfdGetTxInCount, CfdGetTxInIndex, CfdGetTxInWitness,
-  CfdGetTxInWitnessCount, CfdGetTxInfo, CfdGetTxOut, CfdGetTxOutCount, CfdGetTxOutIndex,
-  CfdInitializeCoinSelection, CfdInitializeEstimateFee, CfdInitializeFundRawTx,
-  CfdInitializeMultisigSign, CfdInitializeTransaction, CfdSetOptionFundRawTx, CfdUpdateTxOutAmount,
+  CfdFreeMultisigSignHandle, CfdFreeTransactionHandle, CfdFreeTxDataHandle,
+  CfdGetAppendTxOutFundRawTx, CfdGetSelectedCoinIndex, CfdGetTxInByHandle, CfdGetTxInCountByHandle,
+  CfdGetTxInIndex, CfdGetTxInIndexByHandle, CfdGetTxInWitnessByHandle,
+  CfdGetTxInWitnessCountByHandle, CfdGetTxInfoByHandle, CfdGetTxOutByHandle,
+  CfdGetTxOutCountByHandle, CfdGetTxOutIndexByHandle, CfdInitializeCoinSelection,
+  CfdInitializeEstimateFee, CfdInitializeFundRawTx, CfdInitializeMultisigSign,
+  CfdInitializeTransaction, CfdInitializeTxDataHandle, CfdSetOptionFundRawTx, CfdUpdateTxOutAmount,
   CfdVerifySignature, CfdVerifyTxSign,
 };
 
@@ -340,6 +341,10 @@ impl UtxoData {
       descriptor: descriptor.clone(),
       scriptsig_template: scriptsig_template.clone(),
     }
+  }
+
+  pub fn get_amount(&self) -> Amount {
+    Amount::new(self.amount)
   }
 }
 
@@ -989,11 +994,12 @@ impl Transaction {
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
     let tx = ope.add_pubkey_hash_sign(&tx_hex, outpoint, hash_type, pubkey, signature)?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
-    let data = ope.get_tx_data(new_tx_hex)?;
+    let mut ope2 = ope.clone();
+    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let index = ope2.get_last_txin_index();
+    let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
       tx,
       data,
@@ -1042,14 +1048,15 @@ impl Transaction {
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
     let pubkey = privkey.get_pubkey()?;
     let key = KeyPair::new(privkey, &pubkey);
     let option = SigHashOption::new(*sighash_type, amount.as_satoshi_amount());
     let tx = ope.sign_with_privkey(&tx_hex, outpoint, hash_type, &key, &option, true)?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
-    let data = ope.get_tx_data(new_tx_hex)?;
+    let mut ope2 = ope.clone();
+    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let index = ope2.get_last_txin_index();
+    let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
       tx,
       data,
@@ -1113,11 +1120,12 @@ impl Transaction {
     }
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
     let tx = ope.add_multisig_sign(&tx_hex, outpoint, hash_type, redeem_script, signature_list)?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
-    let data = ope.get_tx_data(new_tx_hex)?;
+    let mut ope2 = ope.clone();
+    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let index = ope2.get_last_txin_index();
+    let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
       tx,
       data,
@@ -1170,11 +1178,12 @@ impl Transaction {
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
     let tx = ope.add_sign(&tx_hex, outpoint, hash_type, sign_data, clear_stack)?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
-    let data = ope.get_tx_data(new_tx_hex)?;
+    let mut ope2 = ope.clone();
+    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let index = ope2.get_last_txin_index();
+    let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
       tx,
       data,
@@ -1232,7 +1241,6 @@ impl Transaction {
   ) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx_hex = hex_from_bytes(&self.tx);
-    let index = ope.get_txin_index_by_outpoint(&tx_hex, outpoint)?;
     let tx = ope.add_script_hash_sign(
       &tx_hex,
       outpoint,
@@ -1242,8 +1250,10 @@ impl Transaction {
       clear_stack,
     )?;
     let new_tx_hex = ope.get_last_tx();
-    let new_txin = ope.get_tx_input(&new_tx_hex, index)?;
-    let data = ope.get_tx_data(new_tx_hex)?;
+    let mut ope2 = ope.clone();
+    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let index = ope2.get_last_txin_index();
+    let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
       tx,
       data,
@@ -1615,6 +1625,8 @@ pub(in crate) struct TransactionOperation {
   last_tx: String,
   txin_list: Vec<TxIn>,
   txout_list: Vec<TxOut>,
+  tx_data: TxData,
+  last_txin_index: u32,
 }
 
 impl TransactionOperation {
@@ -1624,11 +1636,21 @@ impl TransactionOperation {
       last_tx: String::default(),
       txin_list: vec![],
       txout_list: vec![],
+      tx_data: TxData::default(),
+      last_txin_index: 0,
     }
   }
 
   pub fn get_last_tx(&self) -> &str {
     &self.last_tx
+  }
+
+  pub fn get_last_tx_data(&self) -> &TxData {
+    &self.tx_data
+  }
+
+  pub fn get_last_txin_index(&self) -> u32 {
+    self.last_txin_index
   }
 
   pub fn create(
@@ -1682,17 +1704,26 @@ impl TransactionOperation {
   }
 
   pub fn get_all_data(&mut self, tx: &str) -> Result<TxData, CfdError> {
-    let data = self.get_tx_data(tx)?;
-    let in_count = self.get_count(tx, true)?;
-    let out_count = self.get_count(tx, false)?;
-    let in_indexes = TransactionOperation::create_index_list(in_count);
-    let out_indexes = TransactionOperation::create_index_list(out_count);
-
-    let in_data = self.get_tx_input_list(tx, &in_indexes)?;
-    let out_data = self.get_tx_output_list(tx, &out_indexes)?;
-    self.txin_list = in_data;
-    self.txout_list = out_data;
-    Ok(data)
+    let handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let tx_result = {
+        let data = self.get_tx_data_internal(&handle, &tx_handle, tx)?;
+        let in_count = self.get_count_internal(&handle, &tx_handle, tx, true)?;
+        let out_count = self.get_count_internal(&handle, &tx_handle, tx, false)?;
+        let in_indexes = TransactionOperation::create_index_list(in_count);
+        let out_indexes = TransactionOperation::create_index_list(out_count);
+        let in_data = self.get_tx_input_list_internal(&handle, &tx_handle, tx, &in_indexes)?;
+        let out_data = self.get_tx_output_list_internal(&handle, &tx_handle, tx, &out_indexes)?;
+        self.txin_list = in_data;
+        self.txout_list = out_data;
+        Ok(data)
+      };
+      tx_handle.free_handle(&handle);
+      tx_result
+    };
+    handle.free_handle();
+    result
   }
 
   fn create_index_list(index_count: u32) -> Vec<u32> {
@@ -1717,16 +1748,29 @@ impl TransactionOperation {
   }
 
   pub fn get_tx_data(&self, tx: &str) -> Result<TxData, CfdError> {
-    let tx_str = alloc_c_string(tx)?;
     let handle = ErrorHandle::new()?;
+    let result = self.get_tx_data_internal(&handle, &TxDataHandle::empty(), tx);
+    handle.free_handle();
+    result
+  }
+
+  pub fn get_tx_data_internal(
+    &self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    tx: &str,
+  ) -> Result<TxData, CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+    };
     let mut data: TxData = TxData::default();
     let mut txid: *mut c_char = ptr::null_mut();
     let mut wtxid: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
-      CfdGetTxInfo(
+      CfdGetTxInfoByHandle(
         handle.as_handle(),
-        self.network.to_c_value(),
-        tx_str.as_ptr(),
+        tx_data_handle.as_handle(),
         &mut txid,
         &mut wtxid,
         &mut data.size,
@@ -1747,11 +1791,56 @@ impl TransactionOperation {
       }
       _ => Err(handle.get_error(error_code)),
     };
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(&handle);
+    }
+    result
+  }
+
+  pub fn get_txin_by_outpoint(&mut self, tx: &str, outpoint: &OutPoint) -> Result<TxIn, CfdError> {
+    let handle = ErrorHandle::new()?;
+    let result = {
+      let tx_data_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let list_result = {
+        let index = {
+          let mut index: c_uint = 0;
+          let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+          let error_code = unsafe {
+            CfdGetTxInIndexByHandle(
+              handle.as_handle(),
+              tx_data_handle.as_handle(),
+              txid.as_ptr(),
+              outpoint.vout,
+              &mut index,
+            )
+          };
+          match error_code {
+            0 => Ok(index),
+            _ => Err(handle.get_error(error_code)),
+          }
+        }?;
+
+        let indexes = vec![index];
+        let list_result =
+          self.get_tx_input_list_internal(&handle, &tx_data_handle, tx, &indexes)?;
+        let data_result = self.get_tx_data_internal(&handle, &tx_data_handle, tx)?;
+        self.tx_data = data_result;
+        self.last_txin_index = index;
+        if list_result.is_empty() {
+          Err(CfdError::Internal("Failed to empty list.".to_string()))
+        } else {
+          Ok(list_result[0].clone())
+        }
+      };
+      tx_data_handle.free_handle(&handle);
+      list_result
+    };
     handle.free_handle();
     result
   }
 
-  pub fn get_tx_input(&self, tx: &str, index: u32) -> Result<TxIn, CfdError> {
+  /*
+  pub fn get_tx_input(&mut self, tx: &str, index: u32) -> Result<TxIn, CfdError> {
     let indexes = vec![index];
     let list = self.get_tx_input_list(tx, &indexes)?;
     if list.is_empty() {
@@ -1761,9 +1850,37 @@ impl TransactionOperation {
     }
   }
 
-  pub fn get_tx_input_list(&self, tx: &str, indexes: &[u32]) -> Result<Vec<TxIn>, CfdError> {
-    let tx_str = alloc_c_string(tx)?;
+  pub fn get_tx_input_list(&mut self, tx: &str, indexes: &[u32]) -> Result<Vec<TxIn>, CfdError> {
     let handle = ErrorHandle::new()?;
+    let result = {
+      let tx_data_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let list_result = {
+        let list_result = self.get_tx_input_list_internal(
+          &handle, &tx_data_handle, tx, indexes)?;
+        let data_result = self.get_tx_data_internal(
+          &handle, &tx_data_handle, tx)?;
+        self.tx_data = data_result;
+        Ok(list_result)
+      };
+      tx_data_handle.free_handle(&handle);
+      list_result
+    };
+    handle.free_handle();
+    result
+  }
+  */
+
+  pub fn get_tx_input_list_internal(
+    &self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    tx: &str,
+    indexes: &[u32],
+  ) -> Result<Vec<TxIn>, CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+    };
     let mut list: Vec<TxIn> = vec![];
     list.reserve(indexes.len());
 
@@ -1774,10 +1891,9 @@ impl TransactionOperation {
           let mut txid: *mut c_char = ptr::null_mut();
           let mut script_sig: *mut c_char = ptr::null_mut();
           let error_code = unsafe {
-            CfdGetTxIn(
+            CfdGetTxInByHandle(
               handle.as_handle(),
-              self.network.to_c_value(),
-              tx_str.as_ptr(),
+              tx_data_handle.as_handle(),
               *index,
               &mut txid,
               &mut data.outpoint.vout,
@@ -1790,7 +1906,7 @@ impl TransactionOperation {
               let str_list = unsafe { collect_multi_cstring_and_free(&[txid, script_sig]) }?;
               let txid_ret = Txid::from_str(&str_list[0])?;
               let script_ret = Script::from_hex(&str_list[1])?;
-              let script_witness = self.get_tx_input_witness(&handle, &tx_str, *index)?;
+              let script_witness = self.get_tx_input_witness(&handle, &tx_data_handle, *index)?;
               data.outpoint.txid = txid_ret;
               data.script_sig = script_ret;
               data.script_witness = script_witness;
@@ -1809,7 +1925,9 @@ impl TransactionOperation {
         ))
       }
     };
-    handle.free_handle();
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(&handle);
+    }
     result
   }
 
@@ -1830,9 +1948,27 @@ impl TransactionOperation {
   }
   */
 
+  /*
   pub fn get_tx_output_list(&self, tx: &str, indexes: &[u32]) -> Result<Vec<TxOut>, CfdError> {
-    let tx_str = alloc_c_string(tx)?;
     let handle = ErrorHandle::new()?;
+    let result = self.get_tx_output_list_internal(
+      &handle, &TxDataHandle::empty(), tx, indexes);
+    handle.free_handle();
+    result
+  }
+  */
+
+  fn get_tx_output_list_internal(
+    &self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    tx: &str,
+    indexes: &[u32],
+  ) -> Result<Vec<TxOut>, CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+    };
     let mut list: Vec<TxOut> = vec![];
     list.reserve(indexes.len());
 
@@ -1841,20 +1977,22 @@ impl TransactionOperation {
         let item = {
           let mut data: TxOut = TxOut::default();
           let mut locking_script: *mut c_char = ptr::null_mut();
+          let mut asset: *mut c_char = ptr::null_mut();
           let error_code = unsafe {
-            CfdGetTxOut(
+            CfdGetTxOutByHandle(
               handle.as_handle(),
-              self.network.to_c_value(),
-              tx_str.as_ptr(),
+              tx_data_handle.as_handle(),
               *index,
               &mut data.amount,
               &mut locking_script,
+              &mut asset,
             )
           };
           match error_code {
             0 => {
-              let script_obj = unsafe { collect_cstring_and_free(locking_script) }?;
-              data.locking_script = Script::from_hex(&script_obj)?;
+              let str_list = unsafe { collect_multi_cstring_and_free(&[locking_script, asset]) }?;
+              let script_obj = &str_list[0];
+              data.locking_script = Script::from_hex(script_obj)?;
               Ok(data)
             }
             _ => Err(handle.get_error(error_code)),
@@ -1870,36 +2008,48 @@ impl TransactionOperation {
         ))
       }
     };
-    handle.free_handle();
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(&handle);
+    }
     result
   }
 
+  /*
   pub fn get_count(&self, tx: &str, is_target_input: bool) -> Result<u32, CfdError> {
-    let tx_str = alloc_c_string(tx)?;
     let handle = ErrorHandle::new()?;
+    let result = self.get_count_internal(
+      &handle, &TxDataHandle::empty(), tx, is_target_input);
+    handle.free_handle();
+    result
+  }
+  */
+
+  pub fn get_count_internal(
+    &self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    tx: &str,
+    is_target_input: bool,
+  ) -> Result<u32, CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+    };
     let mut count: c_uint = 0;
     let error_code = unsafe {
       if is_target_input {
-        CfdGetTxInCount(
-          handle.as_handle(),
-          self.network.to_c_value(),
-          tx_str.as_ptr(),
-          &mut count,
-        )
+        CfdGetTxInCountByHandle(handle.as_handle(), tx_data_handle.as_handle(), &mut count)
       } else {
-        CfdGetTxOutCount(
-          handle.as_handle(),
-          self.network.to_c_value(),
-          tx_str.as_ptr(),
-          &mut count,
-        )
+        CfdGetTxOutCountByHandle(handle.as_handle(), tx_data_handle.as_handle(), &mut count)
       }
     };
     let result = match error_code {
       0 => Ok(count),
       _ => Err(handle.get_error(error_code)),
     };
-    handle.free_handle();
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(&handle);
+    }
     result
   }
 
@@ -1927,7 +2077,15 @@ impl TransactionOperation {
   }
 
   pub fn get_txout_index_by_address(&self, tx: &str, address: &Address) -> Result<u32, CfdError> {
-    self.get_txout_index(tx, address, &Script::default())
+    let handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let result = self.get_txout_index(&handle, &tx_handle, address, &Script::default());
+      tx_handle.free_handle(&handle);
+      result
+    };
+    handle.free_handle();
+    result
   }
 
   pub fn get_txout_index_by_script(
@@ -1935,7 +2093,15 @@ impl TransactionOperation {
     tx: &str,
     locking_script: &Script,
   ) -> Result<u32, CfdError> {
-    self.get_txout_index(tx, &Address::default(), locking_script)
+    let handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let result = self.get_txout_index(&handle, &tx_handle, &Address::default(), locking_script);
+      tx_handle.free_handle(&handle);
+      result
+    };
+    handle.free_handle();
+    result
   }
 
   pub fn create_sighash(
@@ -2734,15 +2900,15 @@ impl TransactionOperation {
   fn get_tx_input_witness(
     &self,
     handle: &ErrorHandle,
-    tx: &CString,
+    tx_data_handle: &TxDataHandle,
     index: u32,
   ) -> Result<ScriptWitness, CfdError> {
     let mut count: c_uint = 0;
     let error_code = unsafe {
-      CfdGetTxInWitnessCount(
+      CfdGetTxInWitnessCountByHandle(
         handle.as_handle(),
-        self.network.to_c_value(),
-        tx.as_ptr(),
+        tx_data_handle.as_handle(),
+        0,
         index,
         &mut count,
       )
@@ -2755,10 +2921,10 @@ impl TransactionOperation {
           let stack_bytes = {
             let mut stack_data: *mut c_char = ptr::null_mut();
             let error_code = unsafe {
-              CfdGetTxInWitness(
+              CfdGetTxInWitnessByHandle(
                 handle.as_handle(),
-                self.network.to_c_value(),
-                tx.as_ptr(),
+                tx_data_handle.as_handle(),
+                0,
                 index,
                 stack_index,
                 &mut stack_data,
@@ -2789,31 +2955,27 @@ impl TransactionOperation {
 
   fn get_txout_index(
     &self,
-    tx: &str,
+    handle: &ErrorHandle,
+    tx_data_handle: &TxDataHandle,
     address: &Address,
     locking_script: &Script,
   ) -> Result<u32, CfdError> {
-    let tx_str = alloc_c_string(tx)?;
     let addr = alloc_c_string(address.to_str())?;
     let script = alloc_c_string(&locking_script.to_hex())?;
-    let handle = ErrorHandle::new()?;
     let mut index: c_uint = 0;
     let error_code = unsafe {
-      CfdGetTxOutIndex(
+      CfdGetTxOutIndexByHandle(
         handle.as_handle(),
-        self.network.to_c_value(),
-        tx_str.as_ptr(),
+        tx_data_handle.as_handle(),
         addr.as_ptr(),
         script.as_ptr(),
         &mut index,
       )
     };
-    let result = match error_code {
+    match error_code {
       0 => Ok(index),
       _ => Err(handle.get_error(error_code)),
-    };
-    handle.free_handle();
-    result
+    }
   }
 
   fn create_tx(
@@ -2900,6 +3062,52 @@ impl TransactionOperation {
     };
     handle.free_handle();
     result
+  }
+}
+
+/// A container that tx data handler.
+#[derive(Debug, Clone)]
+pub(in crate) struct TxDataHandle {
+  tx_handle: *mut c_void,
+}
+
+impl TxDataHandle {
+  pub fn new(handle: &ErrorHandle, network: &Network, tx: &str) -> Result<TxDataHandle, CfdError> {
+    let tx_str = alloc_c_string(tx)?;
+    let mut tx_handle: *mut c_void = ptr::null_mut();
+    let error_code = unsafe {
+      CfdInitializeTxDataHandle(
+        handle.as_handle(),
+        network.to_c_value(),
+        tx_str.as_ptr(),
+        &mut tx_handle,
+      )
+    };
+    match error_code {
+      0 => Ok(TxDataHandle { tx_handle }),
+      _ => Err(handle.get_error(error_code)),
+    }
+  }
+
+  #[inline]
+  pub fn as_handle(&self) -> *const c_void {
+    self.tx_handle
+  }
+
+  pub fn free_handle(&self, handle: &ErrorHandle) {
+    unsafe {
+      CfdFreeTxDataHandle(handle.as_handle(), self.tx_handle);
+    }
+  }
+
+  pub fn empty() -> TxDataHandle {
+    TxDataHandle {
+      tx_handle: ptr::null_mut(),
+    }
+  }
+
+  pub fn is_null(&self) -> bool {
+    self.tx_handle.is_null()
   }
 }
 

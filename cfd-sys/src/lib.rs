@@ -876,4 +876,40 @@ fns! {
     amount: *mut c_longlong,
   ) -> c_int;
   pub fn CfdFreeCoinSelectionHandle(handle: *const c_void, coin_select_handle: *const c_void) -> c_int;
+  pub fn CfdInitializeTxDataHandle(
+    handle: *const c_void, network_type: c_int, tx_hex: *const i8,
+    tx_data_handle: *mut *mut c_void) -> c_int;
+  pub fn CfdFreeTxDataHandle(handle: *const c_void, tx_data_handle: *const c_void) -> c_int;
+  pub fn CfdGetTxInfoByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void,
+      txid: *mut *mut c_char, wtxid: *mut *mut c_char,
+      size: *mut c_uint, vsize: *mut c_uint,
+      weight: *mut c_uint, version: *mut c_uint,
+      locktime: *mut c_uint) -> c_int;
+  pub fn CfdGetTxInByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, index: c_uint,
+      txid: *mut *mut c_char,
+      vout: *mut c_uint, sequence: *mut c_uint, script_sig: *mut *mut c_char) -> c_int;
+  pub fn CfdGetTxInWitnessByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, stack_type: c_int,
+      txin_index: c_uint,
+      stack_index: c_uint,
+      stack_data: *mut *mut c_char) -> c_int;
+  pub fn CfdGetTxOutByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, index: c_uint,
+      value_satoshi: *mut c_longlong,
+      locking_script: *mut *mut c_char, asset: *mut *mut c_char) -> c_int;
+  pub fn CfdGetTxInCountByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, count: *mut c_uint) -> c_int;
+  pub fn CfdGetTxInWitnessCountByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, stack_type: c_int, txin_index: c_uint,
+      count: *mut c_uint) -> c_int;
+  pub fn CfdGetTxOutCountByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, count: *mut c_uint) -> c_int;
+  pub fn CfdGetTxInIndexByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, txid: *const c_char, vout: c_uint,
+      index: *mut c_uint) -> c_int;
+  pub fn CfdGetTxOutIndexByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, address: *const c_char,
+      direct_locking_script: *const c_char, index: *mut c_uint) -> c_int;
 }

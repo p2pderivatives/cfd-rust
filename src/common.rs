@@ -455,7 +455,7 @@ pub fn request_json(request: &str, option: &str) -> Result<String, CfdError> {
 }
 
 /// A container that cfd error handler.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(in crate) struct ErrorHandle {
   handle: *mut c_void,
 }
@@ -501,11 +501,12 @@ impl ErrorHandle {
     result
   }
 
+  // FIXME: I might use Drop and Rc<T>.
   pub fn free_handle(&self) -> bool {
     unsafe {
       let mut result: bool = false;
       if self.handle.is_null() {
-        println!("CfdFreeHandle NG. null-ptr.");
+        // println!("CfdFreeHandle NG. null-ptr.");
       } else {
         let cfd_ret = CfdFreeHandle(self.handle);
         if cfd_ret == 0 {
