@@ -149,10 +149,10 @@ jobs:
         mkdir build
         cd build
         cmake .. -DENABLE_SHARED=${{ matrix.shared }} -DENABLE_TESTS=off -DENABLE_JS_WRAPPER=off -DCMAKE_BUILD_TYPE=Release -DTARGET_RPATH="/usr/local/lib"
-        cmake --build build --parallel 2 --config Release
         cd ..
-        sudo make install DESTDIR=../dist
+        cmake --build build --parallel 2 --config Release
         cd build
+        sudo make install DESTDIR=../dist
         cd ../../..
     - name: create archive file
       run: |
