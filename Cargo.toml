@@ -1,0 +1,32 @@
+[package]
+name = "cfd-rust"
+version = "0.0.1"
+license = "MIT"
+readme = "README.md"
+keywords = ["build-dependencies"]
+description = """
+Crypto Finance Development Kit for Rust.
+A build dependency for running `cmake` to build a native library
+"""
+categories = ["development-tools::build-utils"]
+
+[lib]
+name = "cfd_rust"
+path = "src/lib.rs"
+
+[dependencies]
+libc = "0.2.74"
+hex = "0.4.2"
+cfd_sys = { path = "./cfd-sys" }
+
+[dev-dependencies]
+sha2 = "0.9.1"
+
+[[example]]
+name = "create_pubkey_address"
+
+[[example]]
+name = "create_dummy_transaction"
+
+[[example]]
+name = "parse_dummy_transaction"
