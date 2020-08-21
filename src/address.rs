@@ -17,14 +17,22 @@ use self::cfd_sys::{
   CfdGetAddressFromMultisigKey, CfdGetAddressInfo, CfdGetAddressesFromMultisig,
 };
 
+/// Hash type of locking script.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum HashType {
+  /// p2pkh
   P2pkh,
+  /// p2sh
   P2sh,
+  /// p2wpkh
   P2wpkh,
+  /// p2wsh
   P2wsh,
+  /// p2sh-p2wpkh
   P2shP2wpkh,
+  /// p2sh-p2wsh
   P2shP2wsh,
+  /// unknown type
   Unknown,
 }
 
@@ -53,6 +61,16 @@ impl HashType {
     }
   }
 
+  /// Get address type from hash type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::AddressType;
+  /// use cfd_rust::HashType;
+  /// let hash_type = HashType::P2wpkh;
+  /// let addr_type = hash_type.to_address_type();
+  /// ```
   pub fn to_address_type(&self) -> AddressType {
     match self {
       HashType::P2pkh => AddressType::P2pkhAddress,
@@ -65,14 +83,18 @@ impl HashType {
     }
   }
 
+  /// Get witness version from hash type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::AddressType;
+  /// use cfd_rust::HashType;
+  /// let hash_type = HashType::P2wpkh;
+  /// let witness_version = hash_type.get_witness_version();
+  /// ```
   pub fn get_witness_version(&self) -> WitnessVersion {
-    match self {
-      HashType::P2wpkh => WitnessVersion::Version0,
-      HashType::P2wsh => WitnessVersion::Version0,
-      HashType::P2shP2wpkh => WitnessVersion::Version0,
-      HashType::P2shP2wsh => WitnessVersion::Version0,
-      _ => WitnessVersion::None,
-    }
+    self.to_address_type().get_witness_version()
   }
 }
 
@@ -90,14 +112,22 @@ impl fmt::Display for HashType {
   }
 }
 
+/// Address type of bitcoin address.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AddressType {
+  /// p2pkh address
   P2pkhAddress,
+  /// p2sh address. (May include p2sh-segwit)
   P2shAddress,
+  /// p2wpkh address (bech32)
   P2wpkhAddress,
+  /// p2wsh address (bech32)
   P2wshAddress,
+  /// p2sh-p2wpkh address (p2sh-segwit)
   P2shP2wpkhAddress,
+  /// p2sh-p2wsh address (p2sh-segwit)
   P2shP2wshAddress,
+  /// unknown address
   Unknown,
 }
 
@@ -117,6 +147,48 @@ impl AddressType {
   pub(in crate) fn to_c_hash_type(&self) -> c_int {
     self.to_c_value()
   }
+
+  /// Get hash type from address type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::AddressType;
+  /// use cfd_rust::HashType;
+  /// let addr_type = AddressType::P2wpkhAddress;
+  /// let hash_type = addr_type.to_hash_type();
+  /// ```
+  pub fn to_hash_type(&self) -> HashType {
+    match self {
+      AddressType::P2pkhAddress => HashType::P2pkh,
+      AddressType::P2shAddress => HashType::P2sh,
+      AddressType::P2wpkhAddress => HashType::P2wpkh,
+      AddressType::P2wshAddress => HashType::P2wsh,
+      AddressType::P2shP2wpkhAddress => HashType::P2shP2wpkh,
+      AddressType::P2shP2wshAddress => HashType::P2shP2wsh,
+      AddressType::Unknown => HashType::Unknown,
+    }
+  }
+
+  /// Get witness version from hash type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::AddressType;
+  /// use cfd_rust::WitnessVersion;
+  /// let addr_type = AddressType::P2wpkhAddress;
+  /// let witness_version = addr_type.get_witness_version();
+  /// ```
+  pub fn get_witness_version(&self) -> WitnessVersion {
+    match self {
+      AddressType::P2wpkhAddress => WitnessVersion::Version0,
+      AddressType::P2wshAddress => WitnessVersion::Version0,
+      AddressType::P2shP2wpkhAddress => WitnessVersion::Version0,
+      AddressType::P2shP2wshAddress => WitnessVersion::Version0,
+      _ => WitnessVersion::None,
+    }
+  }
 }
 
 impl fmt::Display for AddressType {
@@ -133,26 +205,45 @@ impl fmt::Display for AddressType {
   }
 }
 
+/// Witness version of bitcoin address.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum WitnessVersion {
+  /// not witness target
   None,
+  /// witness version 0
   Version0,
-  Version1,  // version 1 (for future use)
-  Version2,  // version 2 (for future use)
-  Version3,  // version 3 (for future use)
-  Version4,  // version 4 (for future use)
-  Version5,  // version 5 (for future use)
-  Version6,  // version 6 (for future use)
-  Version7,  // version 7 (for future use)
-  Version8,  // version 8 (for future use)
-  Version9,  // version 9 (for future use)
-  Version10, // version 10 (for future use)
-  Version11, // version 11 (for future use)
-  Version12, // version 12 (for future use)
-  Version13, // version 13 (for future use)
-  Version14, // version 14 (for future use)
-  Version15, // version 15 (for future use)
-  Version16, // version 16 (for future use)
+  /// witness version 1
+  Version1,
+  /// witness version 2 (for future use)
+  Version2,
+  /// witness version 3 (for future use)
+  Version3,
+  /// witness version 4 (for future use)
+  Version4,
+  /// witness version 5 (for future use)
+  Version5,
+  /// witness version 6 (for future use)
+  Version6,
+  /// witness version 7 (for future use)
+  Version7,
+  /// witness version 8 (for future use)
+  Version8,
+  /// witness version 9 (for future use)
+  Version9,
+  /// witness version 10 (for future use)
+  Version10,
+  /// witness version 11 (for future use)
+  Version11,
+  /// witness version 12 (for future use)
+  Version12,
+  /// witness version 13 (for future use)
+  Version13,
+  /// witness version 14 (for future use)
+  Version14,
+  /// witness version 15 (for future use)
+  Version15,
+  /// witness version 16 (for future use)
+  Version16,
 }
 
 impl fmt::Display for WitnessVersion {
@@ -180,6 +271,7 @@ impl fmt::Display for WitnessVersion {
   }
 }
 
+/// A container that stores a bitcoin address.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Address {
   address: String,
@@ -191,6 +283,18 @@ pub struct Address {
 }
 
 impl Address {
+  /// Parse from an address string.
+  ///
+  /// # Arguments
+  /// * `address` - An address string.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// let addr_str = "bc1q7jm5vw5cunpy3lkvwdl3sr3qfm794xd4jcdzrv";
+  /// let addr = Address::from_string(addr_str).expect("Fail");
+  /// ```
   pub fn from_string(address: &str) -> Result<Address, CfdError> {
     let addr = alloc_c_string(address)?;
     let handle = ErrorHandle::new()?;
@@ -231,6 +335,22 @@ impl Address {
     result
   }
 
+  /// Create from a locking script.
+  ///
+  /// # Arguments
+  /// * `script` - A locking script.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Script;
+  /// let script_hex = "0014f4b7463a98e4c248fecc737f180e204efc5a99b5";
+  /// let script = Script::from_hex(script_hex).expect("fail");
+  /// let addr = Address::from_locking_script(&script, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn from_locking_script(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     let hex = alloc_c_string(&script.to_hex())?;
     let handle = ErrorHandle::new()?;
@@ -254,6 +374,63 @@ impl Address {
     result
   }
 
+  /// Update address type. (for p2sh-segwit)
+  ///
+  /// # Arguments
+  /// * `address_type` - A target address type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, AddressType, Network, Script};
+  /// let script_hex = "a91405bc4d5d12925f008cef06ba387ade16a49d7a3187";
+  /// let script = Script::from_hex(script_hex).expect("fail");
+  /// let mut p2sh_addr = Address::from_locking_script(
+  ///   &script, &Network::Mainnet).expect("Fail");
+  /// let addr = p2sh_addr.update_address_type(&AddressType::P2shP2wpkhAddress);
+  /// ```
+  pub fn update_address_type(mut self, address_type: &AddressType) -> Address {
+    match address_type {
+      AddressType::P2shP2wpkhAddress | AddressType::P2shP2wshAddress => {
+        if self.address_type == AddressType::P2shAddress {
+          self.address_type = *address_type;
+          self.witness_version = address_type.get_witness_version();
+        }
+        self
+      }
+      _ => self,
+    }
+  }
+
+  /// Create multisig address.
+  ///
+  /// # Arguments
+  /// * `require_num` - A multisig require number.
+  /// * `pubkey_list` - Multisig pubkey list.
+  /// * `address_type` - An address type.
+  /// * `network_type` - A target network.
+  ///
+  /// # See
+  /// * Script::multisig
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::AddressType;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Pubkey;
+  /// use std::str::FromStr;
+  /// let key1_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key2_str = "03662a01c232918c9deb3b330272483c3e4ec0c6b5da86df59252835afeb4ab5f9";
+  /// let key3_str = "02239519ec61760ca0bae700d96581d417d9a37dddfc1eb54b9cd5da3788d387b3";
+  /// let key1 = Pubkey::from_str(key1_str).expect("fail");
+  /// let key2 = Pubkey::from_str(key2_str).expect("fail");
+  /// let key3 = Pubkey::from_str(key3_str).expect("fail");
+  /// let pubkey_list = vec![key1, key2, key3];
+  /// let require_num: u8 = 2;
+  /// let addr = Address::from_multisig(require_num, &pubkey_list, &AddressType::P2wshAddress, &Network::Mainnet).expect("Fail");
+  /// ```
   #[inline]
   pub fn from_multisig(
     require_num: u8,
@@ -270,6 +447,23 @@ impl Address {
     )
   }
 
+  /// Create p2pkh address.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A public key.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Pubkey;
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let addr = Address::p2pkh(&key, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn p2pkh(pubkey: &Pubkey, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
       pubkey,
@@ -279,7 +473,23 @@ impl Address {
     )
   }
 
-  // FIXME: move address struct
+  /// Create p2wpkh address.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A public key.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Pubkey;
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let addr = Address::p2wpkh(&key, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn p2wpkh(pubkey: &Pubkey, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
       pubkey,
@@ -289,6 +499,23 @@ impl Address {
     )
   }
 
+  /// Create p2sh wrapped p2wpkh address.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A public key.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Pubkey;
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let addr = Address::p2sh_p2wpkh(&key, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn p2sh_p2wpkh(pubkey: &Pubkey, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
       pubkey,
@@ -298,6 +525,23 @@ impl Address {
     )
   }
 
+  /// Create p2sh address.
+  ///
+  /// # Arguments
+  /// * `script` - A redeem script.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Script;
+  /// use std::str::FromStr;
+  /// let script_hex = "522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae";
+  /// let script = Script::from_hex(script_hex).expect("fail");
+  /// let addr = Address::p2sh(&script, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn p2sh(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
       ptr::null(),
@@ -307,6 +551,23 @@ impl Address {
     )
   }
 
+  /// Create p2wsh address.
+  ///
+  /// # Arguments
+  /// * `script` - A redeem script.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Script;
+  /// use std::str::FromStr;
+  /// let script_hex = "522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae";
+  /// let script = Script::from_hex(script_hex).expect("fail");
+  /// let addr = Address::p2wsh(&script, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn p2wsh(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
       ptr::null(),
@@ -316,6 +577,23 @@ impl Address {
     )
   }
 
+  /// Create p2sh wrapped p2wsh address.
+  ///
+  /// # Arguments
+  /// * `script` - A redeem script.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Script;
+  /// use std::str::FromStr;
+  /// let script_hex = "522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae";
+  /// let script = Script::from_hex(script_hex).expect("fail");
+  /// let addr = Address::p2sh_p2wsh(&script, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn p2sh_p2wsh(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
       ptr::null(),
@@ -345,6 +623,24 @@ impl Address {
     &self.address_type
   }
 
+  pub fn get_witness_version(&self) -> WitnessVersion {
+    self.witness_version
+  }
+
+  /// Get p2wpkh or p2wsh locking script on p2sh-segwit.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Pubkey;
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let addr = Address::p2sh_p2wpkh(&key, &Network::Mainnet).expect("fail");
+  /// let script = addr.get_p2sh_wrapped_script().expect("Fail");
+  /// ```
   pub fn get_p2sh_wrapped_script(&self) -> Result<&Script, CfdError> {
     match self.address_type {
       AddressType::P2shP2wpkhAddress => Ok(&self.p2sh_wrapped_segwit_script),
@@ -355,12 +651,22 @@ impl Address {
     }
   }
 
-  pub fn get_witness_version(&self) -> WitnessVersion {
-    self.witness_version
-  }
-
+  /// Validate an address.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Pubkey;
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let addr = Address::p2sh_p2wpkh(&key, &Network::Mainnet).expect("fail");
+  /// let valid = addr.valid();
+  /// ```
   pub fn valid(&self) -> bool {
-    if !self.address.is_empty() {
+    if self.address.is_empty() {
       false
     } else if let Ok(_result) = Address::from_string(&self.address) {
       true
@@ -369,6 +675,24 @@ impl Address {
     }
   }
 
+  /// Create p2sh wrapped p2wsh address.
+  ///
+  /// # Arguments
+  /// * `script` - A redeem script.
+  /// * `address_type` - An address type on.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::AddressType;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Script;
+  /// let script_hex = "522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae";
+  /// let script = Script::from_hex(script_hex).expect("fail");
+  /// let addr_list = Address::get_multisig_addresses(&script, &AddressType::P2wpkhAddress, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn get_multisig_addresses(
     multisig_script: &Script,
     address_type: &AddressType,
@@ -528,6 +852,8 @@ impl Default for Address {
     }
   }
 }
+
+/// A container that stores a multisig address and pubkey.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MultisigItem {
   address: Address,

@@ -261,11 +261,9 @@ impl ByteData {
   /// use cfd_rust::ByteData;
   /// let bytes: Vec<u8> = vec![0, 1, 2, 3];
   /// let data = ByteData::from_slice(&bytes);
-  /// let serial_result = data.serialize();
-  /// if let Ok(serialized_data) = serial_result {
-  ///   let serial_hex = serialized_data.to_hex();
-  ///   // serial_hex == "0400010203"
-  /// }
+  /// let serial = data.serialize().expect("Fail");
+  /// let serial_hex = serial.to_hex();
+  /// // serial_hex == "0400010203"
   /// ```
   pub fn serialize(&self) -> Result<ByteData, CfdError> {
     let buffer = alloc_c_string(&hex_from_bytes(&self.data))?;
@@ -408,10 +406,8 @@ impl Amount {
   /// ```
   /// use cfd_rust::Amount;
   /// let amount = Amount::new(100000);
-  /// let byte_data_result = amount.as_byte();
-  /// if let Ok(_byte_data) = byte_data_result {
-  ///   // byte_data == "a086010000000000"
-  /// }
+  /// let byte_data = amount.as_byte().expect("Fail");
+  /// // byte_data == "a086010000000000"
   /// ```
   pub fn as_byte(&self) -> Result<Vec<u8>, CfdError> {
     let handle = ErrorHandle::new()?;
@@ -458,7 +454,8 @@ pub fn request_json(request: &str, option: &str) -> Result<String, CfdError> {
   result
 }
 
-#[derive(Debug)]
+/// A container that cfd error handler.
+#[derive(Debug, Clone)]
 pub(in crate) struct ErrorHandle {
   handle: *mut c_void,
 }
@@ -504,11 +501,12 @@ impl ErrorHandle {
     result
   }
 
+  // FIXME: I might use Drop and Rc<T>.
   pub fn free_handle(&self) -> bool {
     unsafe {
       let mut result: bool = false;
       if self.handle.is_null() {
-        println!("CfdFreeHandle NG. null-ptr.");
+        // println!("CfdFreeHandle NG. null-ptr.");
       } else {
         let cfd_ret = CfdFreeHandle(self.handle);
         if cfd_ret == 0 {
@@ -577,6 +575,7 @@ pub(in crate) fn byte_from_hex_unsafe(hex: &str) -> Vec<u8> {
   result
 }
 
+#[inline]
 pub(in crate) fn copy_array_32byte(buffer: &[u8]) -> [u8; 32] {
   let mut result: [u8; 32] = [0; 32];
   if buffer.len() >= 32 {

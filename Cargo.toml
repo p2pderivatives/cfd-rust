@@ -24,3 +24,9 @@ sha2 = "0.9.1"
 
 [[example]]
 name = "create_pubkey_address"
+
+[[example]]
+name = "create_dummy_transaction"
+
+[[example]]
+name = "parse_dummy_transaction"

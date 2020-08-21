@@ -61,7 +61,7 @@ impl Privkey {
   /// ```
   /// use cfd_rust::Privkey;
   /// let bytes = [1; 32];
-  /// let key_result = Privkey::from_slice(&bytes);
+  /// let key = Privkey::from_slice(&bytes).expect("Fail");
   /// ```
   pub fn from_slice(key: &[u8]) -> Result<Privkey, CfdError> {
     if key.len() != PRIVKEY_SIZE {
@@ -82,7 +82,7 @@ impl Privkey {
   /// ```
   /// use cfd_rust::Privkey;
   /// let bytes = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let key_result = Privkey::from_vec(bytes);
+  /// let key = Privkey::from_vec(bytes).expect("Fail");
   /// ```
   pub fn from_vec(key: Vec<u8>) -> Result<Privkey, CfdError> {
     Privkey::from_slice(&key)
@@ -98,7 +98,7 @@ impl Privkey {
   /// ```
   /// use cfd_rust::Privkey;
   /// let wif = "5JBb5A38fjjeBnngkvRmCsXN6EY4w8jWvckik3hDvYQMcddGY23";
-  /// let key_result = Privkey::from_wif(&wif);
+  /// let key = Privkey::from_wif(&wif).expect("Fail");
   /// ```
   pub fn from_wif(wif: &str) -> Result<Privkey, CfdError> {
     let wif_str = alloc_c_string(wif)?;
@@ -141,7 +141,7 @@ impl Privkey {
   ///
   /// ```
   /// use cfd_rust::{Privkey, Network};
-  /// let key_result = Privkey::generate(&Network::Mainnet, true);
+  /// let key = Privkey::generate(&Network::Mainnet, true).expect("Fail");
   /// ```
   pub fn generate(network_type: &Network, is_compressed: bool) -> Result<Privkey, CfdError> {
     let handle = ErrorHandle::new()?;
@@ -188,7 +188,7 @@ impl Privkey {
   /// let bytes = [1; 32];
   /// let key = Privkey::from_slice(&bytes).expect("fail");
   /// let tweak_value = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let tweaked_key_result = key.tweak_add(&tweak_value);
+  /// let tweaked_key = key.tweak_add(&tweak_value).expect("Fail");
   /// ```
   pub fn tweak_add(&self, data: &[u8]) -> Result<Privkey, CfdError> {
     let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
@@ -227,7 +227,7 @@ impl Privkey {
   /// let bytes = [1; 32];
   /// let key = Privkey::from_slice(&bytes).expect("fail");
   /// let tweak_value = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let tweaked_key_result = key.tweak_mul(&tweak_value);
+  /// let tweaked_key = key.tweak_mul(&tweak_value).expect("Fail");
   /// ```
   pub fn tweak_mul(&self, data: &[u8]) -> Result<Privkey, CfdError> {
     let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
@@ -262,7 +262,7 @@ impl Privkey {
   /// use cfd_rust::Privkey;
   /// let bytes = [1; 32];
   /// let key = Privkey::from_slice(&bytes).expect("fail");
-  /// let key_result = key.negate();
+  /// let key = key.negate().expect("Fail");
   /// ```
   pub fn negate(&self) -> Result<Privkey, CfdError> {
     let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
@@ -330,6 +330,14 @@ impl Privkey {
     &self.wif
   }
 
+  pub fn to_network(&self) -> &Network {
+    &self.net_type
+  }
+
+  pub fn is_compressed_pubkey(&self) -> bool {
+    self.is_compressed
+  }
+
   /// Generate a wallet import format string.
   ///
   /// # Arguments
@@ -342,14 +350,17 @@ impl Privkey {
   /// use cfd_rust::{Privkey, Network};
   /// let bytes = [1; 32];
   /// let key = Privkey::from_slice(&bytes).expect("fail");
-  /// let key_wif_result = key.generate_wif(&Network::Regtest, true);
+  /// let key_wif = key.generate_wif(&Network::Regtest, true).expect("Fail");
   /// ```
   pub fn generate_wif(
     &self,
     network_type: &Network,
     is_compressed: bool,
   ) -> Result<String, CfdError> {
-    if !self.wif.is_empty() {
+    if (!self.wif.is_empty())
+      && (*network_type == self.net_type)
+      && (is_compressed == self.is_compressed)
+    {
       return Ok(self.to_wif().to_string());
     }
     let privkey = alloc_c_string(&self.to_hex())?;
@@ -380,7 +391,7 @@ impl Privkey {
   /// use cfd_rust::Privkey;
   /// let bytes = [1; 32];
   /// let key = Privkey::from_slice(&bytes).expect("fail");
-  /// let key_result = key.get_pubkey();
+  /// let pubkey = key.get_pubkey().expect("Fail");
   /// ```
   pub fn get_pubkey(&self) -> Result<Pubkey, CfdError> {
     Privkey::generate_pubkey(&self.key, self.is_compressed)
@@ -397,12 +408,9 @@ impl Privkey {
   /// ```
   /// use cfd_rust::Privkey;
   /// let bytes = [1; 32];
-  /// let key_wif_result = Privkey::generate_pubkey(&bytes, true);
+  /// let key_wif = Privkey::generate_pubkey(&bytes, true).expect("Fail");
   /// ```
-  pub fn generate_pubkey(
-    key: &[u8; PRIVKEY_SIZE],
-    is_compressed: bool,
-  ) -> Result<Pubkey, CfdError> {
+  pub fn generate_pubkey(key: &[u8], is_compressed: bool) -> Result<Pubkey, CfdError> {
     let privkey = alloc_c_string(&hex_from_bytes(key))?;
     let handle = ErrorHandle::new()?;
     let wif: *const i8 = ptr::null();
@@ -440,7 +448,7 @@ impl Privkey {
   /// let bytes = [1; 32];
   /// let key = Privkey::from_slice(&bytes).expect("fail");
   /// let sighash = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let sig_result = key.calculate_ec_signature(&sighash, true);
+  /// let sig = key.calculate_ec_signature(&sighash, true).expect("Fail");
   /// ```
   pub fn calculate_ec_signature(
     &self,
@@ -491,7 +499,7 @@ impl Privkey {
   /// let key = Privkey::from_slice(&bytes).expect("fail");
   /// let k_value = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
   /// let message = vec![2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let sig_result = key.calculate_schnorr_signature(&k_value, &message);
+  /// let sig = key.calculate_schnorr_signature(&k_value, &message).expect("Fail");
   /// ```
   pub fn calculate_schnorr_signature(
     &self,
@@ -539,7 +547,7 @@ impl Privkey {
   /// let key = Privkey::from_slice(&bytes).expect("fail");
   /// let k_value = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
   /// let message = vec![2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let sig_result = key.calculate_schnorr_signature_with_nonce(&k_value, &message);
+  /// let sig = key.calculate_schnorr_signature_with_nonce(&k_value, &message).expect("Fail");
   /// ```
   pub fn calculate_schnorr_signature_with_nonce(
     &self,
@@ -581,7 +589,7 @@ impl Privkey {
   /// use cfd_rust::Privkey;
   /// let bytes = [1; 32];
   /// let key = Privkey::from_slice(&bytes).expect("fail");
-  /// let key_result = key.get_schnorr_public_nonce();
+  /// let nonce = key.get_schnorr_public_nonce().expect("Fail");
   /// ```
   pub fn get_schnorr_public_nonce(&self) -> Result<Pubkey, CfdError> {
     let privkey = alloc_c_string(&self.to_hex())?;
@@ -675,7 +683,7 @@ impl Pubkey {
   /// ```
   /// use cfd_rust::Pubkey;
   /// let bytes = [2; 33];
-  /// let key_result = Pubkey::from_slice(&bytes);
+  /// let key = Pubkey::from_slice(&bytes).expect("Fail");
   /// ```
   pub fn from_slice(key: &[u8]) -> Result<Pubkey, CfdError> {
     Pubkey::from_vec(key.to_vec())
@@ -691,7 +699,7 @@ impl Pubkey {
   /// ```
   /// use cfd_rust::Pubkey;
   /// let bytes = vec![2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let key_result = Pubkey::from_vec(bytes);
+  /// let key = Pubkey::from_vec(bytes).expect("Fail");
   /// ```
   pub fn from_vec(key: Vec<u8>) -> Result<Pubkey, CfdError> {
     let len = key.len();
@@ -740,6 +748,11 @@ impl Pubkey {
     hex_from_bytes(&self.key)
   }
 
+  #[inline]
+  pub fn to_str(&self) -> String {
+    self.to_hex()
+  }
+
   /// Get a compressed public key.
   ///
   /// # Example
@@ -749,7 +762,7 @@ impl Pubkey {
   /// use std::str::FromStr;
   /// let uncompressed_key_str = "04fb82cb7d7bc1454f777582971473e702fbd058d40fe0958a9baecc37b89f7b0e92e67ae4804fc1da350f13d8be66dea93cbb2f8e78f178f661c30d7eead45a80";
   /// let uncompressed_key = Pubkey::from_str(uncompressed_key_str).expect("fail");
-  /// let key_result = uncompressed_key.compress();
+  /// let key = uncompressed_key.compress().expect("Fail");
   /// ```
   pub fn compress(&self) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&self.to_hex())?;
@@ -779,7 +792,7 @@ impl Pubkey {
   /// use std::str::FromStr;
   /// let compressed_key_str = "02239519ec61760ca0bae700d96581d417d9a37dddfc1eb54b9cd5da3788d387b3";
   /// let compressed_key = Pubkey::from_str(compressed_key_str).expect("fail");
-  /// let key_result = compressed_key.compress();
+  /// let key = compressed_key.compress().expect("Fail");
   /// ```
   pub fn uncompress(&self) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&self.to_hex())?;
@@ -818,7 +831,7 @@ impl Pubkey {
   /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
   /// let key = Pubkey::from_str(key_str).expect("fail");
   /// let tweak_value = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let tweaked_key_result = key.tweak_add(&tweak_value);
+  /// let tweaked_key = key.tweak_add(&tweak_value).expect("Fail");
   /// ```
   pub fn tweak_add(&self, data: &[u8]) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&hex_from_bytes(&self.key))?;
@@ -857,7 +870,7 @@ impl Pubkey {
   /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
   /// let key = Pubkey::from_str(key_str).expect("fail");
   /// let tweak_value = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let tweaked_key_result = key.tweak_mul(&tweak_value);
+  /// let tweaked_key = key.tweak_mul(&tweak_value).expect("Fail");
   /// ```
   pub fn tweak_mul(&self, data: &[u8]) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&hex_from_bytes(&self.key))?;
@@ -892,7 +905,7 @@ impl Pubkey {
   /// use std::str::FromStr;
   /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
   /// let key = Pubkey::from_str(key_str).expect("fail");
-  /// let key_result = key.negate();
+  /// let pubkey = key.negate().expect("Fail");
   /// ```
   pub fn negate(&self) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&hex_from_bytes(&self.key))?;
@@ -925,7 +938,7 @@ impl Pubkey {
   /// let key2 = Pubkey::from_str(key2_str).expect("fail");
   /// let key3 = Pubkey::from_str(key3_str).expect("fail");
   /// let pubkeys = vec![key1, key2, key3];
-  /// let key_result = Pubkey::combine(&pubkeys);
+  /// let key = Pubkey::combine(&pubkeys).expect("Fail");
   /// ```
   pub fn combine(pubkey_list: &[Pubkey]) -> Result<Pubkey, CfdError> {
     if pubkey_list.is_empty() {
@@ -1126,7 +1139,7 @@ impl Pubkey {
   /// let oracle_r_point_byte = [2; 33];
   /// let oracle_r_point = Pubkey::from_slice(&oracle_r_point_byte).expect("fail");
   /// let message = vec![1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-  /// let schnorr_pubkey_result = oracle_pubkey.get_schnorr_pubkey(&oracle_r_point, &message);
+  /// let schnorr_pubkey = oracle_pubkey.get_schnorr_pubkey(&oracle_r_point, &message).expect("Fail");
   /// ```
   pub fn get_schnorr_pubkey(
     &self,
@@ -1270,7 +1283,7 @@ impl Default for KeyPair {
   }
 }
 
-/// An enumeration definition of  signature hash type.
+/// An enumeration definition of signature hash type.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SigHashType {
   /// SigHashType::All
@@ -1454,8 +1467,13 @@ impl SignParameter {
   /// ```
   #[inline]
   pub fn set_use_der_encode(mut self, sighash_type: &SigHashType) -> SignParameter {
-    self.use_der_encode = true;
-    self.set_signature_hash(&sighash_type)
+    if self.data.len() > 65 {
+      // target is already der-encoded. unused sighash-type.
+      self.set_signature_hash(&sighash_type)
+    } else {
+      self.use_der_encode = true;
+      self.set_signature_hash(&sighash_type)
+    }
   }
 
   /// Set a related pubkey. Used to sort multisig signatures.
@@ -1521,7 +1539,7 @@ impl SignParameter {
   /// use cfd_rust::SignParameter;
   /// let bytes = [1; 64];
   /// let signature = SignParameter::from_slice(&bytes);
-  /// let normalized_sig_result = signature.normalize();
+  /// let normalized_sig = signature.normalize().expect("Fail");
   /// ```
   pub fn normalize(&self) -> Result<SignParameter, CfdError> {
     let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
@@ -1553,7 +1571,7 @@ impl SignParameter {
   /// use cfd_rust::SignParameter;
   /// let bytes = [1; 64];
   /// let signature = SignParameter::from_slice(&bytes);
-  /// let der_encoded_sig_result = signature.to_der_encode();
+  /// let der_encoded_sig = signature.to_der_encode().expect("Fail");
   /// ```
   pub fn to_der_encode(&self) -> Result<SignParameter, CfdError> {
     let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
@@ -1585,9 +1603,9 @@ impl SignParameter {
   ///
   /// ```
   /// use cfd_rust::SignParameter;
-  /// let bytes = [1; 72];
-  /// let der_encoded_sig = SignParameter::from_slice(&bytes);
-  /// let signature_result = der_encoded_sig.to_der_decode();
+  /// use std::str::FromStr;
+  /// let der_encoded_sig = SignParameter::from_str("30440220773420c0ded41a55b1f1205cfb632f08f3f911a53e7338a0dac73ec6cbe3ca4702201907434d046185abedc5afddc2761a642bccc70af6d22b46394f1d04a8b2422601").expect("Fail");
+  /// let signature = der_encoded_sig.to_der_decode().expect("Fail");
   /// ```
   pub fn to_der_decode(&self) -> Result<SignParameter, CfdError> {
     let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
@@ -1645,5 +1663,11 @@ impl FromStr for SignParameter {
       Ok(byte_array) => Ok(SignParameter::from_vec(byte_array)),
       Err(e) => Err(e),
     }
+  }
+}
+
+impl Default for SignParameter {
+  fn default() -> SignParameter {
+    SignParameter::from_slice(&[])
   }
 }

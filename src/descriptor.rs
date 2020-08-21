@@ -20,18 +20,30 @@ use self::cfd_sys::{
   CfdGetDescriptorMultisigKey, CfdParseDescriptor,
 };
 
+/// The script type on descriptor.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DescriptorScriptType {
+  /// ScriptType: null
   Null,
+  /// ScriptType: sh
   Sh,
+  /// ScriptType: wsh
   Wsh,
+  /// ScriptType: pk
   Pk,
+  /// ScriptType: pkh
   Pkh,
+  /// ScriptType: wpkh
   Wpkh,
+  /// ScriptType: combo
   Combo,
+  /// ScriptType: multi
   Multi,
+  /// ScriptType: sortedmulti
   SortedMulti,
+  /// ScriptType: addr
   Addr,
+  /// ScriptType: raw
   Raw,
 }
 
@@ -71,11 +83,16 @@ impl fmt::Display for DescriptorScriptType {
   }
 }
 
+/// The key type on descriptor.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DescriptorKeyType {
+  /// key type: null
   Null,
+  /// key type: public key
   Public,
+  /// key type: bip32 ext pubkey
   Bip32,
+  /// key type: bip32 ext privkey
   Bip32Priv,
 }
 
@@ -101,6 +118,7 @@ impl fmt::Display for DescriptorKeyType {
   }
 }
 
+/// A container that stores a key data.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct KeyData {
   key_type: DescriptorKeyType,
@@ -191,6 +209,7 @@ impl Default for KeyData {
   }
 }
 
+/// A container that stores a descriptor script data.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct DescriptorScriptData {
   script_type: DescriptorScriptType,
@@ -347,6 +366,7 @@ impl Default for DescriptorScriptData {
   }
 }
 
+/// A container that stores a output descriptor.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Descriptor {
   descriptor: String,
@@ -355,11 +375,39 @@ pub struct Descriptor {
 }
 
 impl Descriptor {
+  /// Parse from a descriptor string.
+  ///
+  /// # Arguments
+  /// * `descriptor` - a descriptor string.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network};
+  /// let desc_str = "pkh(02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5)";
+  /// let descriptor = Descriptor::new(desc_str, &Network::Testnet).expect("Fail");
+  /// ```
   pub fn new(descriptor: &str, network_type: &Network) -> Result<Descriptor, CfdError> {
     let desc = Descriptor::append_checksum(descriptor, network_type)?;
     Descriptor::parse_descriptor(&desc, "", network_type)
   }
 
+  /// Get descriptor from deriving key.
+  ///
+  /// # Arguments
+  /// * `descriptor` - A descriptor string.
+  /// * `bip32_path` - A extkey derive bip32 path string.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network};
+  /// let desc_str = "pkh(xpub661MyMwAqRbcGB88KaFbLGiYAat55APKhtWg4uYMkXAmfuSTbq2QYsn9sKJCj1YqZPafsboef4h4YbXXhNhPwMbkHTpkf3zLhx7HvFw1NDy/1/*)";
+  /// let path = "2";
+  /// let descriptor = Descriptor::with_derive_bip32path(desc_str, path, &Network::Testnet).expect("Fail");
+  /// ```
   pub fn with_derive_bip32path(
     descriptor: &str,
     bip32_path: &str,
@@ -369,36 +417,139 @@ impl Descriptor {
     Descriptor::parse_descriptor(&desc, bip32_path, network_type)
   }
 
+  /// Create p2pk descriptor.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A pubkey.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let descriptor = Descriptor::p2pk(&key, &Network::Testnet).expect("Fail");
+  /// ```
   pub fn p2pk(pubkey: &Pubkey, network_type: &Network) -> Result<Descriptor, CfdError> {
     let desc = format!("pk({})", pubkey.to_hex());
     Descriptor::new(&desc, network_type)
   }
 
+  /// Create p2pkh descriptor.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A pubkey.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let descriptor = Descriptor::p2pkh(&key, &Network::Testnet).expect("Fail");
+  /// ```
   pub fn p2pkh(pubkey: &Pubkey, network_type: &Network) -> Result<Descriptor, CfdError> {
     let desc = format!("pkh({})", pubkey.to_hex());
     Descriptor::new(&desc, network_type)
   }
 
+  /// Create p2wpkh descriptor.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A pubkey.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let descriptor = Descriptor::p2wpkh(&key, &Network::Testnet).expect("Fail");
+  /// ```
   pub fn p2wpkh(pubkey: &Pubkey, network_type: &Network) -> Result<Descriptor, CfdError> {
     let desc = format!("wpkh({})", pubkey.to_hex());
     Descriptor::new(&desc, network_type)
   }
 
+  /// Create p2sh wrapped p2wpkh descriptor.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A pubkey.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let descriptor = Descriptor::p2sh_p2wpk(&key, &Network::Testnet).expect("Fail");
+  /// ```
   pub fn p2sh_p2wpk(pubkey: &Pubkey, network_type: &Network) -> Result<Descriptor, CfdError> {
     let desc = format!("sh(wpkh({}))", pubkey.to_hex());
     Descriptor::new(&desc, network_type)
   }
 
+  /// Create combo descriptor.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A pubkey.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let descriptor = Descriptor::combo(&key, &Network::Testnet).expect("Fail");
+  /// ```
   pub fn combo(pubkey: &Pubkey, network_type: &Network) -> Result<Descriptor, CfdError> {
     let desc = format!("combo({})", pubkey.to_hex());
     Descriptor::new(&desc, network_type)
   }
 
+  /// Create addr descriptor.
+  ///
+  /// # Arguments
+  /// * `address` - An address.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, Address};
+  /// use std::str::FromStr;
+  /// let addr_str = "bc1q7jm5vw5cunpy3lkvwdl3sr3qfm794xd4jcdzrv";
+  /// let addr = Address::from_string(addr_str).expect("Fail");
+  /// let descriptor = Descriptor::address(&addr).expect("Fail");
+  /// ```
   pub fn address(address: &Address) -> Result<Descriptor, CfdError> {
     let desc = format!("addr({})", address.to_str());
     Descriptor::new(&desc, address.get_network_type())
   }
 
+  /// Create raw script descriptor.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A pubkey.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, Script};
+  /// use std::str::FromStr;
+  /// let op_1 = Script::from_asm("OP_TRUE").expect("Fail");
+  /// let descriptor = Descriptor::raw_script(&op_1, &Network::Testnet).expect("Fail");
+  /// ```
   pub fn raw_script(
     locking_script: &Script,
     network_type: &Network,
@@ -407,6 +558,29 @@ impl Descriptor {
     Descriptor::new(&desc, network_type)
   }
 
+  /// Create multisig descriptor.
+  ///
+  /// # Arguments
+  /// * `pubkey_list` - Multisig pubkey list.
+  /// * `require_num` - A multisig require number.
+  /// * `hash_type` - A hash type.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, HashType, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key1_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key2_str = "03662a01c232918c9deb3b330272483c3e4ec0c6b5da86df59252835afeb4ab5f9";
+  /// let key3_str = "02239519ec61760ca0bae700d96581d417d9a37dddfc1eb54b9cd5da3788d387b3";
+  /// let key1 = Pubkey::from_str(key1_str).expect("fail");
+  /// let key2 = Pubkey::from_str(key2_str).expect("fail");
+  /// let key3 = Pubkey::from_str(key3_str).expect("fail");
+  /// let pubkey_list = vec![key1, key2, key3];
+  /// let require_num: u8 = 2;
+  /// let desc = Descriptor::multisig(&pubkey_list, require_num, &HashType::P2wsh, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn multisig(
     pubkey_list: &[Pubkey],
     require_num: u8,
@@ -416,6 +590,29 @@ impl Descriptor {
     Descriptor::multisig_base(pubkey_list, require_num, hash_type, network_type, false)
   }
 
+  /// Create sorted multisig descriptor.
+  ///
+  /// # Arguments
+  /// * `pubkey_list` - Multisig pubkey list.
+  /// * `require_num` - A multisig require number.
+  /// * `hash_type` - A hash type.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, HashType, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key1_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key2_str = "03662a01c232918c9deb3b330272483c3e4ec0c6b5da86df59252835afeb4ab5f9";
+  /// let key3_str = "02239519ec61760ca0bae700d96581d417d9a37dddfc1eb54b9cd5da3788d387b3";
+  /// let key1 = Pubkey::from_str(key1_str).expect("fail");
+  /// let key2 = Pubkey::from_str(key2_str).expect("fail");
+  /// let key3 = Pubkey::from_str(key3_str).expect("fail");
+  /// let pubkey_list = vec![key1, key2, key3];
+  /// let require_num: u8 = 2;
+  /// let desc = Descriptor::sorted_multisig(&pubkey_list, require_num, &HashType::P2wsh, &Network::Mainnet).expect("Fail");
+  /// ```
   pub fn sorted_multisig(
     pubkey_list: &[Pubkey],
     require_num: u8,
@@ -531,6 +728,7 @@ impl Descriptor {
                 ext_privkey,
               ])
             }?;
+            let locking_script_str = &str_list[0];
             let addr_str = &str_list[1];
             let pubkey_obj = &str_list[2];
             let script_str = &str_list[3];
@@ -547,10 +745,7 @@ impl Descriptor {
             let type_obj = DescriptorScriptType::from_c_value(script_type);
             let hash_type_obj = HashType::from_c_value(hash_type);
             let data = match type_obj {
-              DescriptorScriptType::Combo
-              | DescriptorScriptType::Pk
-              | DescriptorScriptType::Pkh
-              | DescriptorScriptType::Wpkh => {
+              DescriptorScriptType::Pk | DescriptorScriptType::Pkh | DescriptorScriptType::Wpkh => {
                 let key_data = Descriptor::collect_key_data(
                   key_type,
                   &pubkey_obj,
@@ -599,6 +794,33 @@ impl Descriptor {
                 &hash_type_obj,
                 &addr,
               )),
+              DescriptorScriptType::Combo => {
+                if pubkey_obj.is_empty() && ext_pubkey_obj.is_empty() && ext_privkey_obj.is_empty()
+                {
+                  let script_obj = Script::from_hex(locking_script_str)?;
+                  Ok(DescriptorScriptData::from_script(
+                    type_obj,
+                    depth,
+                    hash_type_obj,
+                    addr,
+                    script_obj,
+                  ))
+                } else {
+                  let key_data = Descriptor::collect_key_data(
+                    key_type,
+                    &pubkey_obj,
+                    &ext_pubkey_obj,
+                    &ext_privkey_obj,
+                  )?;
+                  Ok(DescriptorScriptData::from_pubkey(
+                    type_obj,
+                    depth,
+                    hash_type_obj,
+                    addr,
+                    key_data,
+                  ))
+                }
+              }
               _ => Ok(DescriptorScriptData::default()),
             }?;
 
@@ -641,6 +863,24 @@ impl Descriptor {
     &self.root_data.address
   }
 
+  /// Exist script-hash.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, HashType, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key1_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key2_str = "03662a01c232918c9deb3b330272483c3e4ec0c6b5da86df59252835afeb4ab5f9";
+  /// let key3_str = "02239519ec61760ca0bae700d96581d417d9a37dddfc1eb54b9cd5da3788d387b3";
+  /// let key1 = Pubkey::from_str(key1_str).expect("fail");
+  /// let key2 = Pubkey::from_str(key2_str).expect("fail");
+  /// let key3 = Pubkey::from_str(key3_str).expect("fail");
+  /// let pubkey_list = vec![key1, key2, key3];
+  /// let require_num: u8 = 2;
+  /// let descriptor = Descriptor::multisig(&pubkey_list, require_num, &HashType::P2wsh, &Network::Mainnet).expect("Fail");
+  /// let has_script = descriptor.has_script_hash();
+  /// ```
   pub fn has_script_hash(&self) -> bool {
     match self.root_data.script_type {
       DescriptorScriptType::Sh | DescriptorScriptType::Wsh => match self.root_data.hash_type {
@@ -660,6 +900,18 @@ impl Descriptor {
     }
   }
 
+  /// Exist key-hash.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key = Pubkey::from_str(key_str).expect("fail");
+  /// let descriptor = Descriptor::combo(&key, &Network::Testnet).expect("Fail");
+  /// let has_key_hash = descriptor.has_key_hash();
+  /// ```
   pub fn has_key_hash(&self) -> bool {
     match self.root_data.script_type {
       DescriptorScriptType::Sh
@@ -674,12 +926,30 @@ impl Descriptor {
   }
 
   pub fn get_key_data(&self) -> Result<&KeyData, CfdError> {
-    match self.has_key_hash() {
-      false => Err(CfdError::IllegalState("Not exist key data.".to_string())),
+    match self.root_data.key_data.key_type {
+      DescriptorKeyType::Null => Err(CfdError::IllegalState("Not exist key data.".to_string())),
       _ => Ok(&self.root_data.key_data),
     }
   }
 
+  /// Exist multisig.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Descriptor, HashType, Network, Pubkey};
+  /// use std::str::FromStr;
+  /// let key1_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let key2_str = "03662a01c232918c9deb3b330272483c3e4ec0c6b5da86df59252835afeb4ab5f9";
+  /// let key3_str = "02239519ec61760ca0bae700d96581d417d9a37dddfc1eb54b9cd5da3788d387b3";
+  /// let key1 = Pubkey::from_str(key1_str).expect("fail");
+  /// let key2 = Pubkey::from_str(key2_str).expect("fail");
+  /// let key3 = Pubkey::from_str(key3_str).expect("fail");
+  /// let pubkey_list = vec![key1, key2, key3];
+  /// let require_num: u8 = 2;
+  /// let descriptor = Descriptor::multisig(&pubkey_list, require_num, &HashType::P2wsh, &Network::Mainnet).expect("Fail");
+  /// let has_script = descriptor.has_multisig();
+  /// ```
   pub fn has_multisig(&self) -> bool {
     self.root_data.multisig_require_num != 0
   }
@@ -795,7 +1065,7 @@ impl Descriptor {
     };
     let first = &script_list[0];
     match first.hash_type {
-      HashType::P2sh | HashType::P2wpkh => {
+      HashType::P2sh | HashType::P2wsh => {
         if (script_list.len() > 1) && (script_list[1].hash_type == HashType::P2pkh) {
           desc.root_data = DescriptorScriptData::from_key_and_script(
             first.script_type,
@@ -824,7 +1094,7 @@ impl Descriptor {
       _ => {}
     }
 
-    if (first.hash_type != HashType::P2sh) || (script_list.len() == 1) {
+    if script_list.len() == 1 {
       desc.root_data = first.clone();
       return desc;
     }

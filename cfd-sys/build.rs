@@ -4,6 +4,11 @@ use std::env;
 use std::path::Path;
 
 fn main() {
+  println!("cargo:rerun-if-changed=build.rs");
+  println!("cargo:rerun-if-changed=src/lib.rs");
+  println!("cargo:rerun-if-changed=cfd-cmake/CMakeLists.txt");
+  println!("cargo:rerun-if-changed=cfd-cmake/external/CMakeLists.txt");
+
   // cargo build -vv
   let _build_type = env::var("PROFILE").unwrap();
   let release_name = "release";
@@ -48,13 +53,24 @@ fn main() {
       println!("cargo:rustc-link-lib=static=univalue");
     }
   } else {
-    let dst = cmake::Config::new("cfd-cmake")
-      .define("ENABLE_TESTS", "off")
-      .define("ENABLE_JS_WRAPPER", "off")
-      .define("ENABLE_CAPI", "on")
-      .define("ENABLE_SHARED", "off")
-      .define("CMAKE_BUILD_TYPE", cmake_build_type)
-      .build();
+    let dst = if _os_type == os_windows {
+      cmake::Config::new("cfd-cmake")
+        .define("ENABLE_TESTS", "off")
+        .define("ENABLE_JS_WRAPPER", "off")
+        .define("ENABLE_CAPI", "on")
+        .define("ENABLE_SHARED", "off")
+        .define("IGNORE_DUMMY_EXE", "off")
+        .define("CMAKE_BUILD_TYPE", cmake_build_type)
+        .build()
+    } else {
+      cmake::Config::new("cfd-cmake")
+        .define("ENABLE_TESTS", "off")
+        .define("ENABLE_JS_WRAPPER", "off")
+        .define("ENABLE_CAPI", "on")
+        .define("ENABLE_SHARED", "off")
+        .define("CMAKE_BUILD_TYPE", cmake_build_type)
+        .build()
+    };
 
     println!(
       "cargo:rustc-link-search=native={}{}build{}{}",

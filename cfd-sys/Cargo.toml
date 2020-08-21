@@ -20,7 +20,7 @@ all-features = true
 libc = "0.2.74"
 
 [build-dependencies]
-cmake = "0.1.31"
+cmake = "0.1.44"
 pkg-config = "0.3.18"
 
 [features]

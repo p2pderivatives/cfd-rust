@@ -5,13 +5,17 @@
 - Rust
 - C/C++ Compiler
   - can compile c++11
-  - make support compiler
 - CMake (3.14.3 or higher)
-- Python 3.x
 
 ### Windows 
 
-- Visual Studio 2019
+download and install files.
+- [Rustup](https://rustup.rs/)
+- [CMake](https://cmake.org/) (3.14.3 or higher)
+- MSVC
+  - [Visual Studio](https://visualstudio.microsoft.com/downloads/) (Verified version is 2017 or higher)
+  - [Build Tools for Visual Studio](https://visualstudio.microsoft.com/downloads/) (2017 or higher)
+  - (Using only) [msvc redistribution package](https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads)
 
 ### MacOS
 
@@ -63,9 +67,13 @@ cargo build
 
 ### Prepare cfd native library from releases asset (Windows)
 
-T.B.D. (plan to use cmake's features)
+Using cmake find_package.
+1. get releases asset. (ex. https://github.com/cryptogarageinc/cfd/releases/download/v0.1.12/cfd-v0.1.12-win-vs2019-x86_64.zip )
+2. Expand to PATH
 
 ---
+
+## Test and Example
 
 ### Test
 
@@ -78,6 +86,38 @@ cargo test
 ```
 cargo run --example create_pubkey_address
 ```
+
+---
+
+## Information for developers
+
+### using library
+
+- cfd (called by cfd-sys)
+  - cfd-core
+    - [libwally-core](https://github.com/cryptogarageinc/libwally-core/tree/cfd-develop) (forked from [ElementsProject/libwally-core](https://github.com/ElementsProject/libwally-core))
+    - [univalue](https://github.com/jgarzik/univalue) (for JSON encoding and decoding)
+
+### formatter
+
+- rustfmt
+
+### linter
+
+- clippy
+
+### document tool
+
+- cargo
+  ```
+  cargo doc
+  ```
+
+### support compilers
+
+- Visual Studio (2017 or higher)
+- Clang (7.x or higher)
+- GCC (5.x or higher)
 
 ---
 
