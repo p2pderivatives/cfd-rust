@@ -68,7 +68,7 @@ cargo build
 ### Prepare cfd native library from releases asset (Windows)
 
 Using cmake find_package.
-1. get releases asset. (ex. https://github.com/p2pderivatives/cfd/releases/download/v0.1.12/cfd-v0.1.12-win-vs2019-x86_64.zip )
+1. get releases asset. (ex. https://github.com/p2pderivatives/cfd/releases/download/v0.0.1/cfd-v0.0.1-win-vs2019-x86_64.zip )
 2. Expand to PATH
 
 ---
