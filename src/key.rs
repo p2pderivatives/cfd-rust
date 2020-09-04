@@ -1531,6 +1531,16 @@ impl SignParameter {
     &self.pubkey
   }
 
+  #[inline]
+  pub fn len(&self) -> usize {
+    self.data.len()
+  }
+
+  #[inline]
+  pub fn is_empty(&self) -> bool {
+    self.data.is_empty()
+  }
+
   /// Get a normalized signature.
   ///
   /// # Example
@@ -1589,7 +1599,9 @@ impl SignParameter {
     let result = match error_code {
       0 => {
         let der_encoded = unsafe { collect_cstring_and_free(der_signature) }?;
-        Ok(SignParameter::from_vec(byte_from_hex_unsafe(&der_encoded)))
+        let mut sig = SignParameter::from_vec(byte_from_hex_unsafe(&der_encoded));
+        sig.sighash_type = self.sighash_type;
+        Ok(sig)
       }
       _ => Err(handle.get_error(error_code)),
     };

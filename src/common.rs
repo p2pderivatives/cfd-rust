@@ -7,6 +7,7 @@ use std::error;
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ptr;
+use std::str::FromStr;
 use std::{io, str};
 
 use self::cfd_sys::{
@@ -112,6 +113,24 @@ impl Network {
       11 => Network::ElementsRegtest,
       12 => Network::CustomChain,
       _ => Network::Mainnet,
+    }
+  }
+
+  pub fn is_elements(&self) -> bool {
+    match self {
+      Network::Mainnet | Network::Testnet | Network::Regtest => false,
+      Network::LiquidV1 | Network::ElementsRegtest | Network::CustomChain => true,
+    }
+  }
+
+  pub fn to_str(&self) -> &str {
+    match self {
+      Network::Mainnet => "mainnet",
+      Network::Testnet => "testnet",
+      Network::Regtest => "regtest",
+      Network::LiquidV1 => "liquidv1",
+      Network::ElementsRegtest => "regtest",
+      Network::CustomChain => "custom",
     }
   }
 }
@@ -418,7 +437,10 @@ impl Amount {
     let result = match error_code {
       0 => {
         let hex = unsafe { collect_cstring_and_free(output) }?;
-        byte_from_hex(&hex)
+        let byte = byte_from_hex(&hex)?;
+        let byte_data = ByteData::from_slice_reverse(&byte);
+        let arr = byte_data.to_slice();
+        Ok(arr.to_vec())
       }
       _ => Err(handle.get_error(error_code)),
     };
@@ -430,6 +452,89 @@ impl Amount {
 impl Default for Amount {
   fn default() -> Amount {
     Amount { satoshi_amount: 0 }
+  }
+}
+
+/// A container that stores a reverse byte container.
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct ReverseContainer {
+  data: [u8; 32],
+}
+
+impl ReverseContainer {
+  /// Generate from slice.
+  ///
+  /// # Arguments
+  /// * `data` - An unsigned 8bit slice that holds the data.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ReverseContainer;
+  /// let bytes = [2; 32];
+  /// let data = ReverseContainer::from_slice(&bytes);
+  /// ```
+  pub fn from_slice(data: &[u8; 32]) -> ReverseContainer {
+    ReverseContainer { data: *data }
+  }
+
+  #[inline]
+  pub fn to_slice(&self) -> &[u8; 32] {
+    &self.data
+  }
+
+  pub fn to_hex(&self) -> String {
+    let byte_data = ByteData::from_slice_reverse(&self.data);
+    byte_data.to_hex()
+  }
+  /// check empty data.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ReverseContainer;
+  /// let bytes = [1; 32];
+  /// let key = ReverseContainer::from_slice(&bytes);
+  /// let valid = key.is_empty();
+  /// ```
+  #[inline]
+  pub fn is_empty(&self) -> bool {
+    for i in &self.data {
+      if *i != 0 {
+        return false;
+      }
+    }
+    true
+  }
+}
+
+impl FromStr for ReverseContainer {
+  type Err = CfdError;
+  fn from_str(text: &str) -> Result<ReverseContainer, CfdError> {
+    let bytes = byte_from_hex(text)?;
+    if bytes.len() != 32 {
+      Err(CfdError::IllegalArgument(
+        "invalid data length.".to_string(),
+      ))
+    } else {
+      let byte_data = ByteData::from_slice_reverse(&bytes);
+      let reverse_bytes = byte_data.to_slice();
+      let mut data = ReverseContainer::default();
+      data.data = copy_array_32byte(&reverse_bytes);
+      Ok(data)
+    }
+  }
+}
+
+impl fmt::Display for ReverseContainer {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{}", &self.to_hex())
+  }
+}
+
+impl Default for ReverseContainer {
+  fn default() -> ReverseContainer {
+    ReverseContainer { data: [0; 32] }
   }
 }
 

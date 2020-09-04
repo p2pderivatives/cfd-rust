@@ -134,6 +134,11 @@ impl ConfidentialAddress {
   pub fn get_confidential_key(&self) -> &Pubkey {
     &self.confidential_key
   }
+
+  #[inline]
+  pub fn valid(&self) -> bool {
+    self.confidential_key.valid()
+  }
 }
 
 impl FromStr for ConfidentialAddress {

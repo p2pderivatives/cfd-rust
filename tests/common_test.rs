@@ -11,6 +11,9 @@ mod tests {
     let amount = Amount::from_btc(amount_btc);
     let amount_satoshi = amount.as_satoshi_amount();
     assert_eq!(123456789012, amount_satoshi);
+    let byte_data = amount.as_byte().expect("Fail");
+    let byte_str = ByteData::from_slice(&byte_data).to_hex();
+    assert_eq!("141a99be1c000000", byte_str);
   }
 
   #[test]

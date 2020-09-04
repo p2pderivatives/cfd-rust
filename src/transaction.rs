@@ -2,13 +2,13 @@ extern crate cfd_sys;
 extern crate libc;
 
 // use self::cfd_sys as ffi;
-use self::libc::{c_char, c_uint, c_void};
+use self::libc::{c_char, c_int, c_uint, c_void};
 use crate::address::{Address, AddressType, HashType};
 use crate::common::{
-  alloc_c_string, byte_from_hex, byte_from_hex_unsafe, collect_cstring_and_free,
-  collect_multi_cstring_and_free, copy_array_32byte, hex_from_bytes, Amount, ByteData, CfdError,
-  ErrorHandle, Network,
+  alloc_c_string, byte_from_hex_unsafe, collect_cstring_and_free, collect_multi_cstring_and_free,
+  hex_from_bytes, Amount, ByteData, CfdError, ErrorHandle, Network, ReverseContainer,
 };
+use crate::confidential_transaction::ConfidentialAsset;
 use crate::descriptor::Descriptor;
 use crate::key::{KeyPair, Privkey, Pubkey, SigHashType, SignParameter};
 use crate::script::Script;
@@ -32,7 +32,8 @@ use self::cfd_sys::{
   CfdGetTxOutCountByHandle, CfdGetTxOutIndexByHandle, CfdInitializeCoinSelection,
   CfdInitializeEstimateFee, CfdInitializeFundRawTx, CfdInitializeMultisigSign,
   CfdInitializeTransaction, CfdInitializeTxDataHandle, CfdSetOptionFundRawTx, CfdUpdateTxOutAmount,
-  CfdVerifySignature, CfdVerifyTxSign,
+  CfdVerifySignature, CfdVerifyTxSign, DEFAULT_BLIND_MINIMUM_BITS, FUND_OPT_DUST_FEE_RATE,
+  FUND_OPT_KNAPSACK_MIN_CHANGE, FUND_OPT_LONG_TERM_FEE_RATE, WITNESS_STACK_TYPE_NORMAL,
 };
 
 // fund option
@@ -48,9 +49,9 @@ pub const SEQUENCE_LOCK_TIME_ENABLE_MAX: u32 = 0xfffffffe;
 pub const TXID_SIZE: usize = 32;
 
 /// A container that stores a txid.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Txid {
-  txid: [u8; TXID_SIZE],
+  txid: ReverseContainer,
 }
 
 impl Txid {
@@ -67,35 +68,26 @@ impl Txid {
   /// let data = Txid::from_slice(&bytes);
   /// ```
   pub fn from_slice(txid: &[u8; TXID_SIZE]) -> Txid {
-    Txid { txid: *txid }
+    Txid {
+      txid: ReverseContainer::from_slice(txid),
+    }
   }
 
   #[inline]
   pub fn to_slice(&self) -> &[u8; TXID_SIZE] {
-    &self.txid
+    self.txid.to_slice()
   }
 
   pub fn to_hex(&self) -> String {
-    let byte_data = ByteData::from_slice_reverse(&self.txid);
-    byte_data.to_hex()
+    self.txid.to_hex()
   }
 }
 
 impl FromStr for Txid {
   type Err = CfdError;
   fn from_str(text: &str) -> Result<Txid, CfdError> {
-    let bytes = byte_from_hex(text)?;
-    if bytes.len() != TXID_SIZE {
-      Err(CfdError::IllegalArgument(
-        "invalid txid length.".to_string(),
-      ))
-    } else {
-      let byte_data = ByteData::from_slice_reverse(&bytes);
-      let reverse_bytes = byte_data.to_slice();
-      let mut txid = Txid::default();
-      txid.txid = copy_array_32byte(&reverse_bytes);
-      Ok(txid)
-    }
+    let txid = ReverseContainer::from_str(text)?;
+    Ok(Txid { txid })
   }
 }
 
@@ -108,13 +100,13 @@ impl fmt::Display for Txid {
 impl Default for Txid {
   fn default() -> Txid {
     Txid {
-      txid: [0; TXID_SIZE],
+      txid: ReverseContainer::default(),
     }
   }
 }
 
 /// A container that stores a txid and vout.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct OutPoint {
   txid: Txid,
   vout: u32,
@@ -401,23 +393,28 @@ impl Default for CoinSelectionData {
 /// A container that stores transaction fee.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FeeData {
-  pub tx_fee: i64,
+  /// tx outputs and tx base fee.
+  pub txout_fee: i64,
+  /// utxo (tx inputs) fee.
   pub utxo_fee: i64,
 }
 
 impl FeeData {
-  pub fn new(tx_fee: i64, utxo_fee: i64) -> FeeData {
-    FeeData { tx_fee, utxo_fee }
+  pub fn new(txout_fee: i64, utxo_fee: i64) -> FeeData {
+    FeeData {
+      txout_fee,
+      utxo_fee,
+    }
   }
 
   pub fn get_total_fee(&self) -> i64 {
-    self.tx_fee + self.utxo_fee
+    self.txout_fee + self.utxo_fee
   }
 }
 
 impl fmt::Display for FeeData {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "fee[tx:{}, utxo:{}]", &self.tx_fee, self.utxo_fee)
+    write!(f, "fee[tx:{}, utxo:{}]", &self.txout_fee, self.utxo_fee)
   }
 }
 
@@ -434,6 +431,10 @@ pub struct FeeOption {
   pub long_term_fee_rate: f64,
   pub dust_fee_rate: f64,
   pub knapsack_min_change: i64,
+  pub is_blind: bool,
+  pub blind_exponent: i64,
+  pub blind_minimum_bits: i64,
+  pub fee_asset: ConfidentialAsset,
 }
 
 impl FeeOption {
@@ -444,12 +445,20 @@ impl FeeOption {
         long_term_fee_rate: 1.0,
         dust_fee_rate: 3.0,
         knapsack_min_change: -1,
+        is_blind: true,
+        blind_exponent: 0,
+        blind_minimum_bits: DEFAULT_BLIND_MINIMUM_BITS as i64,
+        fee_asset: ConfidentialAsset::default(),
       },
       _ => FeeOption {
         fee_rate: 2.0,
         long_term_fee_rate: 20.0,
         dust_fee_rate: 3.0,
         knapsack_min_change: -1,
+        is_blind: false,
+        blind_exponent: 0,
+        blind_minimum_bits: 0,
+        fee_asset: ConfidentialAsset::default(),
       },
     }
   }
@@ -465,7 +474,7 @@ impl Default for FeeOption {
 #[derive(Debug, PartialEq, Clone)]
 pub struct FundTargetOption {
   pub target_amount: i64,
-  pub target_asset: String,
+  pub target_asset: ConfidentialAsset,
   pub reserved_address: Address,
 }
 
@@ -473,15 +482,15 @@ impl FundTargetOption {
   pub fn from_amount(amount: i64, address: &Address) -> FundTargetOption {
     FundTargetOption {
       target_amount: amount,
-      target_asset: String::default(),
+      target_asset: ConfidentialAsset::default(),
       reserved_address: address.clone(),
     }
   }
 
-  pub fn from_asset(amount: i64, asset: &str, address: &Address) -> FundTargetOption {
+  pub fn from_asset(amount: i64, asset: &ConfidentialAsset, address: &Address) -> FundTargetOption {
     FundTargetOption {
       target_amount: amount,
-      target_asset: asset.to_string(),
+      target_asset: asset.clone(),
       reserved_address: address.clone(),
     }
   }
@@ -491,7 +500,7 @@ impl Default for FundTargetOption {
   fn default() -> FundTargetOption {
     FundTargetOption {
       target_amount: 0,
-      target_asset: String::default(),
+      target_asset: ConfidentialAsset::default(),
       reserved_address: Address::default(),
     }
   }
@@ -560,6 +569,14 @@ impl TxInData {
   pub fn new(outpoint: &OutPoint) -> TxInData {
     TxInData {
       outpoint: outpoint.clone(),
+      sequence: SEQUENCE_LOCK_TIME_DISABLE,
+      script_sig: Script::default(),
+    }
+  }
+
+  pub fn from_utxo(utxo: &UtxoData) -> TxInData {
+    TxInData {
+      outpoint: utxo.outpoint.clone(),
       sequence: SEQUENCE_LOCK_TIME_DISABLE,
       script_sig: Script::default(),
     }
@@ -807,10 +824,8 @@ impl Transaction {
   /// Update amount.
   ///
   /// # Arguments
-  /// * `version` - A transaction version.
-  /// * `locktime` - A transaction locktime.
-  /// * `txin_list` - Transaction input list.
-  /// * `txout_list` - Transaction output list.
+  /// * `index` - A txout index.
+  /// * `amount` - A satoshi amount.
   ///
   /// # Example
   ///
@@ -1418,6 +1433,7 @@ impl Transaction {
   /// # Arguments
   /// * `outpoint` - A transaction input out-point.
   /// * `locking_script` - A transaction input locking script.
+  /// * `hash_type` - A signed hash type.
   /// * `amount` - A transaction input amount.
   ///
   /// # Example
@@ -1568,14 +1584,11 @@ impl Default for Transaction {
   }
 }
 
-// #[derive(Debug, PartialEq, Eq, Clone)]
-// pub struct CoinSelectionUtil {}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(in crate) struct SigHashOption {
-  sighash_type: SigHashType,
-  amount: i64,
-  value_byte: ByteData,
+  pub sighash_type: SigHashType,
+  pub amount: i64,
+  pub value_byte: ByteData,
 }
 
 impl SigHashOption {
@@ -1598,8 +1611,8 @@ impl SigHashOption {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(in crate) struct HashTypeData {
-  pubkey: Pubkey,
-  script: Script,
+  pub pubkey: Pubkey,
+  pub script: Script,
 }
 
 impl HashTypeData {
@@ -1709,8 +1722,8 @@ impl TransactionOperation {
       let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
       let tx_result = {
         let data = self.get_tx_data_internal(&handle, &tx_handle, tx)?;
-        let in_count = self.get_count_internal(&handle, &tx_handle, tx, true)?;
-        let out_count = self.get_count_internal(&handle, &tx_handle, tx, false)?;
+        let in_count = Self::get_count_internal(&self.network, &handle, &tx_handle, tx, true)?;
+        let out_count = Self::get_count_internal(&self.network, &handle, &tx_handle, tx, false)?;
         let in_indexes = TransactionOperation::create_index_list(in_count);
         let out_indexes = TransactionOperation::create_index_list(out_count);
         let in_data = self.get_tx_input_list_internal(&handle, &tx_handle, tx, &in_indexes)?;
@@ -1906,7 +1919,12 @@ impl TransactionOperation {
               let str_list = unsafe { collect_multi_cstring_and_free(&[txid, script_sig]) }?;
               let txid_ret = Txid::from_str(&str_list[0])?;
               let script_ret = Script::from_hex(&str_list[1])?;
-              let script_witness = self.get_tx_input_witness(&handle, &tx_data_handle, *index)?;
+              let script_witness = Self::get_tx_input_witness(
+                &handle,
+                &tx_data_handle,
+                *index,
+                WITNESS_STACK_TYPE_NORMAL,
+              )?;
               data.outpoint.txid = txid_ret;
               data.script_sig = script_ret;
               data.script_witness = script_witness;
@@ -2025,7 +2043,7 @@ impl TransactionOperation {
   */
 
   pub fn get_count_internal(
-    &self,
+    network: &Network,
     handle: &ErrorHandle,
     tx_handle: &TxDataHandle,
     tx: &str,
@@ -2033,7 +2051,7 @@ impl TransactionOperation {
   ) -> Result<u32, CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+      _ => TxDataHandle::new(&handle, network, tx)?,
     };
     let mut count: c_uint = 0;
     let error_code = unsafe {
@@ -2080,7 +2098,7 @@ impl TransactionOperation {
     let handle = ErrorHandle::new()?;
     let result = {
       let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
-      let result = self.get_txout_index(&handle, &tx_handle, address, &Script::default());
+      let result = Self::get_txout_index(&handle, &tx_handle, address, &Script::default());
       tx_handle.free_handle(&handle);
       result
     };
@@ -2096,7 +2114,7 @@ impl TransactionOperation {
     let handle = ErrorHandle::new()?;
     let result = {
       let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
-      let result = self.get_txout_index(&handle, &tx_handle, &Address::default(), locking_script);
+      let result = Self::get_txout_index(&handle, &tx_handle, &Address::default(), locking_script);
       tx_handle.free_handle(&handle);
       result
     };
@@ -2458,9 +2476,16 @@ impl TransactionOperation {
     key: &HashTypeData,
     option: &SigHashOption,
   ) -> Result<bool, CfdError> {
+    let sig_data = match sign_data.len() {
+      64 | 65 => Ok(sign_data.to_hex()),
+      _ => {
+        let der_decoded = sign_data.to_der_decode()?;
+        Ok(der_decoded.to_hex())
+      }
+    }?;
     let tx_str = alloc_c_string(tx)?;
     let txid = alloc_c_string(&outpoint.txid.to_hex())?;
-    let signature = alloc_c_string(&sign_data.to_hex())?;
+    let signature = alloc_c_string(&sig_data)?;
     let pubkey_hex = alloc_c_string(&key.pubkey.to_hex())?;
     let script_hex = alloc_c_string(&key.script.to_hex())?;
     let value_byte_hex = alloc_c_string(&option.value_byte.to_hex())?;
@@ -2539,8 +2564,13 @@ impl TransactionOperation {
     let empty_str = alloc_c_string("")?;
     let handle = ErrorHandle::new()?;
     let mut fee_handle: *mut c_void = ptr::null_mut();
-    let error_code =
-      unsafe { CfdInitializeEstimateFee(handle.as_handle(), &mut fee_handle, false) };
+    let error_code = unsafe {
+      CfdInitializeEstimateFee(
+        handle.as_handle(),
+        &mut fee_handle,
+        self.network.is_elements(),
+      )
+    };
     let result = match error_code {
       0 => {
         let ret = {
@@ -2578,7 +2608,7 @@ impl TransactionOperation {
               fee_handle,
               tx_str.as_ptr(),
               empty_str.as_ptr(),
-              &mut fee_data.tx_fee,
+              &mut fee_data.txout_fee,
               &mut fee_data.utxo_fee,
               false,
               fee_rate,
@@ -2824,23 +2854,20 @@ impl TransactionOperation {
           set_fund_tx_option(
             &handle,
             fund_handle,
-            2,
-            ptr::null(),
-            &fee_param.dust_fee_rate,
+            FUND_OPT_DUST_FEE_RATE,
+            FundOptionValue::Double(fee_param.dust_fee_rate),
           )?;
           set_fund_tx_option(
             &handle,
             fund_handle,
-            3,
-            ptr::null(),
-            &fee_param.long_term_fee_rate,
+            FUND_OPT_LONG_TERM_FEE_RATE,
+            FundOptionValue::Double(fee_param.long_term_fee_rate),
           )?;
           set_fund_tx_option(
             &handle,
             fund_handle,
-            4,
-            &fee_param.knapsack_min_change,
-            ptr::null(),
+            FUND_OPT_KNAPSACK_MIN_CHANGE,
+            FundOptionValue::Long(fee_param.knapsack_min_change),
           )?;
 
           let mut tx_fee = 0;
@@ -2897,18 +2924,18 @@ impl TransactionOperation {
     result
   }
 
-  fn get_tx_input_witness(
-    &self,
+  pub fn get_tx_input_witness(
     handle: &ErrorHandle,
     tx_data_handle: &TxDataHandle,
     index: u32,
+    stack_type: c_int,
   ) -> Result<ScriptWitness, CfdError> {
     let mut count: c_uint = 0;
     let error_code = unsafe {
       CfdGetTxInWitnessCountByHandle(
         handle.as_handle(),
         tx_data_handle.as_handle(),
-        0,
+        stack_type,
         index,
         &mut count,
       )
@@ -2924,7 +2951,7 @@ impl TransactionOperation {
               CfdGetTxInWitnessByHandle(
                 handle.as_handle(),
                 tx_data_handle.as_handle(),
-                0,
+                stack_type,
                 index,
                 stack_index,
                 &mut stack_data,
@@ -2954,7 +2981,6 @@ impl TransactionOperation {
   }
 
   fn get_txout_index(
-    &self,
     handle: &ErrorHandle,
     tx_data_handle: &TxDataHandle,
     address: &Address,
@@ -3111,27 +3137,35 @@ impl TxDataHandle {
   }
 }
 
-fn set_fund_tx_option(
+#[derive(Debug, PartialEq, Clone)]
+pub(in crate) enum FundOptionValue {
+  Long(i64),
+  Double(f64),
+  Bool(bool),
+}
+
+pub(in crate) fn set_fund_tx_option(
   handle: &ErrorHandle,
   fund_handle: *const c_void,
   key: i32,
-  long_value: *const i64,
-  double_value: *const f64,
+  value: FundOptionValue,
 ) -> Result<(), CfdError> {
+  let mut longlong_value = 0;
+  let mut float_value = 0.0;
+  let mut is_bool = false;
+  match value {
+    FundOptionValue::Long(value) => longlong_value = value,
+    FundOptionValue::Double(value) => float_value = value,
+    FundOptionValue::Bool(value) => is_bool = value,
+  }
   let error_code = unsafe {
-    let longlong_value = if long_value.is_null() { 0 } else { *long_value };
-    let float_value = if double_value.is_null() {
-      0.0
-    } else {
-      *double_value
-    };
     CfdSetOptionFundRawTx(
       handle.as_handle(),
       fund_handle,
       key,
       longlong_value,
       float_value,
-      false,
+      is_bool,
     )
   };
   match error_code {
