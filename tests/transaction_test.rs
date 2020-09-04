@@ -4,7 +4,7 @@ extern crate cfd_rust;
 mod tests {
   use cfd_rust::{
     Address, Amount, Descriptor, ExtPrivkey, ExtPubkey, FeeOption, FundTargetOption,
-    FundTransactionData, HashType, Network, OutPoint, Script, SigHashType, SignParameter,
+    FundTransactionData, HashType, Network, OutPoint, Pubkey, Script, SigHashType, SignParameter,
     Transaction, TxInData, TxOutData, UtxoData,
   };
   use std::str::FromStr;
@@ -538,6 +538,31 @@ mod tests {
   }
 
   #[test]
+  fn verify_pkh_test() {
+    let tx = Transaction::from_str("01000000019c53cb2a6118530aaa345b799aeb7e4e5055de41ac5b2dd2ce47419624c57b580000000000ffffffff0130ea052a010000001976a9143cadb10040e9e7002bbd9d0620f5f79c05603ffd88ac00000000").expect("Fail");
+    let outpoint = OutPoint::from_str(
+      "587bc524964147ced22d5bac41de55504e7eeb9a795b34aa0a5318612acb539c",
+      0,
+    )
+    .expect("Fail");
+    let hash_type = HashType::P2pkh;
+    let pubkey =
+      Pubkey::from_str("02f56451fc1fd9040652ff9a700cf914ad1df1c8f9e82f3fe96ca01b6cd47293ef")
+        .expect("Fail");
+    let signature = SignParameter::from_str("3c1cffcc8908ab1911303f102c41e5c677488346851288360b0d309ab99557207ac2c9c6aec9d8bae187a1eea843dda423edff216c568efad231e4249c77ffe1").expect("Fail").set_use_der_encode(&SigHashType::All);
+    let verify = tx
+      .verify_signature_by_pubkey(
+        &outpoint,
+        &hash_type,
+        &pubkey,
+        &signature,
+        &Amount::default(),
+      )
+      .expect("Fail");
+    assert_eq!(true, verify);
+  }
+
+  #[test]
   fn transaction_estimate_fee_test() {
     let network = Network::Mainnet;
     // p2sh-p2wpkh
@@ -576,7 +601,7 @@ mod tests {
     let fee_data = tx
       .estimate_fee(&[utxos[1].clone(), utxos[2].clone()], 10.0)
       .expect("Fail");
-    assert_eq!(720, fee_data.tx_fee);
+    assert_eq!(720, fee_data.txout_fee);
     assert_eq!(1800, fee_data.utxo_fee);
   }
 
@@ -691,8 +716,8 @@ mod tests {
     let fee_data = fund_tx
       .estimate_fee(&fee_utxos, fee_option.fee_rate)
       .expect("Fail");
-    assert_eq!(7460, fee_data.tx_fee + fee_data.utxo_fee);
-    assert_eq!(2060, fee_data.tx_fee);
+    assert_eq!(7460, fee_data.txout_fee + fee_data.utxo_fee);
+    assert_eq!(2060, fee_data.txout_fee);
     assert_eq!(5400, fee_data.utxo_fee);
   }
 

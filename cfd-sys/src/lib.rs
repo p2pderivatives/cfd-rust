@@ -7,6 +7,27 @@ extern crate libc;
 
 use self::libc::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
 
+pub const BLIND_OPT_MINIMUM_RANGE_VALUE: c_int = 1;
+pub const BLIND_OPT_EXPONENT: c_int = 2;
+pub const BLIND_OPT_MINIMUM_BITS: c_int = 3;
+
+pub const WITNESS_STACK_TYPE_NORMAL: c_int = 0;
+pub const WITNESS_STACK_TYPE_PEGIN: c_int = 1;
+
+pub const FUND_OPT_IS_BLIND: c_int = 1;
+pub const FUND_OPT_DUST_FEE_RATE: c_int = 2;
+pub const FUND_OPT_LONG_TERM_FEE_RATE: c_int = 3;
+pub const FUND_OPT_KNAPSACK_MIN_CHANGE: c_int = 4;
+pub const FUND_OPT_BLIND_EXPONENT: c_int = 5;
+pub const FUND_OPT_BLIND_MINIMUM_BITS: c_int = 6;
+
+pub const COIN_OPT_BLIND_EXPONENT: c_int = 1;
+pub const COIN_OPT_BLIND_MINIMUM_BITS: c_int = 2;
+pub const FEE_OPT_BLIND_EXPONENT: c_int = 1;
+pub const FEE_OPT_BLIND_MINIMUM_BITS: c_int = 2;
+
+pub const DEFAULT_BLIND_MINIMUM_BITS: c_int = 52;
+
 // references: https://github.com/rust-lang/libz-sys
 #[rustfmt::skip]
 macro_rules! fns {
@@ -876,9 +897,7 @@ fns! {
     amount: *mut c_longlong,
   ) -> c_int;
   pub fn CfdFreeCoinSelectionHandle(handle: *const c_void, coin_select_handle: *const c_void) -> c_int;
-  pub fn CfdInitializeTxDataHandle(
-    handle: *const c_void, network_type: c_int, tx_hex: *const i8,
-    tx_data_handle: *mut *mut c_void) -> c_int;
+  pub fn CfdInitializeTxDataHandle(handle: *const c_void, network_type: c_int, tx_hex: *const i8, tx_data_handle: *mut *mut c_void) -> c_int;
   pub fn CfdFreeTxDataHandle(handle: *const c_void, tx_data_handle: *const c_void) -> c_int;
   pub fn CfdGetTxInfoByHandle(
       handle: *const c_void, tx_data_handle: *const c_void,
@@ -912,4 +931,103 @@ fns! {
   pub fn CfdGetTxOutIndexByHandle(
       handle: *const c_void, tx_data_handle: *const c_void, address: *const c_char,
       direct_locking_script: *const c_char, index: *mut c_uint) -> c_int;
+  pub fn CfdInitializeConfidentialTx(
+      handle: *const c_void, version: c_uint, locktime: c_uint, tx_string: *mut *mut c_char) -> c_int;
+  // Just in case
+  pub fn CfdAddConfidentialTxOut(
+      handle: *const c_void, tx_hex_string: *const c_char, asset_string: *const c_char,
+      value_satoshi: c_longlong, value_commitment: *const c_char, address: *const c_char,
+      direct_locking_script: *const c_char, nonce: *const c_char, tx_string: *mut *mut c_char) -> c_int;
+  // Needed
+  pub fn CfdUpdateConfidentialTxOut(
+      handle: *const c_void, tx_hex_string: *const c_char, index: c_uint,
+      asset_string: *const c_char, value_satoshi: c_longlong,
+      value_commitment: *const c_char, address: *const c_char,
+      direct_locking_script: *const c_char, nonce: *const c_char, tx_string: *mut *mut c_char) -> c_int;
+  pub fn CfdGetConfidentialTxInfoByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, txid: *mut *mut c_char, wtxid: *mut *mut c_char,
+      wit_hash: *mut *mut c_char, size: *mut c_uint, vsize: *mut c_uint, weight: *mut c_uint,
+      version: *mut c_uint, locktime: *mut c_uint) -> c_int;
+  pub fn CfdGetTxInIssuanceInfoByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, index: c_uint, entropy: *mut *mut c_char,
+      nonce: *mut *mut c_char, asset_amount: *mut c_longlong, asset_value: *mut *mut c_char,
+      token_amount: *mut c_longlong, token_value: *mut *mut c_char, asset_rangeproof: *mut *mut c_char,
+      token_rangeproof: *mut *mut c_char) -> c_int;
+  pub fn CfdGetConfidentialTxOutSimpleByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, index: c_uint, asset_string: *mut *mut c_char,
+      value_satoshi: *mut c_longlong, value_commitment: *mut *mut c_char, nonce: *mut *mut c_char,
+      locking_script: *mut *mut c_char) -> c_int;
+  pub fn CfdGetConfidentialTxOutByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, index: c_uint, asset_string: *mut *mut c_char,
+      value_satoshi: *mut c_longlong, value_commitment: *mut *mut c_char, nonce: *mut *mut c_char,
+      locking_script: *mut *mut c_char, surjection_proof: *mut *mut c_char, rangeproof: *mut *mut c_char) -> c_int;
+  pub fn CfdSetRawReissueAsset(
+      handle: *const c_void, tx_hex_string: *const c_char, txid: *const c_char, vout: c_uint,
+      asset_amount: c_longlong, blinding_nonce: *const c_char, entropy: *const c_char,
+      address: *const c_char, direct_locking_script: *const c_char,
+      asset_string: *mut *mut c_char, tx_string: *mut *mut c_char) -> c_int;
+  pub fn CfdGetIssuanceBlindingKey(
+      handle: *const c_void, master_blinding_key: *const c_char, txid: *const c_char,
+      vout: c_uint, blinding_key: *mut *mut c_char) -> c_int;
+  pub fn CfdGetDefaultBlindingKey(
+      handle: *const c_void, master_blinding_key: *const c_char, locking_script: *const c_char,
+      blinding_key: *mut *mut c_char) -> c_int;
+  pub fn CfdInitializeBlindTx(handle: *const c_void, blind_handle: *mut *mut c_void) -> c_int;
+  pub fn CfdSetBlindTxOption(
+      handle: *const c_void, blind_handle: *const c_void, key: c_int, value: c_longlong) -> c_int;
+  pub fn CfdAddBlindTxInData(
+      handle: *const c_void, blind_handle: *const c_void, txid: *const c_char, vout: c_uint,
+      asset_string: *const c_char, asset_blind_factor: *const c_char,
+      value_blind_factor: *const c_char, value_satoshi: c_longlong,
+      asset_key: *const c_char, token_key: *const c_char) -> c_int;
+  pub fn CfdAddBlindTxOutData(
+      handle: *const c_void, blind_handle: *const c_void, index: c_uint,
+      confidential_key: *const c_char) -> c_int;
+  pub fn CfdAddBlindTxOutByAddress(
+      handle: *const c_void, blind_handle: *const c_void, confidential_address: *const c_char) -> c_int;
+  pub fn CfdFinalizeBlindTx(
+      handle: *const c_void, blind_handle: *const c_void, tx_hex_string: *const c_char,
+      tx_string: *mut *mut c_char) -> c_int;
+  pub fn CfdFreeBlindHandle(handle: *const c_void, blind_handle: *const c_void) -> c_int;
+  pub fn CfdFinalizeElementsMultisigSign(
+      handle: *const c_void, multi_sign_handle: *const c_void, tx_hex_string: *const c_char, txid: *const c_char, vout: c_uint, hash_type: c_int, witness_script: *const c_char,      redeem_script: *const c_char, clear_stack: bool, tx_string: *mut *mut c_char) -> c_int;
+  pub fn CfdAddConfidentialTxSignWithPrivkeySimple(
+      handle: *const c_void, tx_hex_string: *const c_char, txid: *const c_char, vout: c_uint,
+      hash_type: c_int, pubkey: *const c_char, privkey: *const c_char,
+      value_satoshi: c_longlong, value_commitment: *const c_char, sighash_type: c_int,
+      sighash_anyone_can_pay: bool, has_grind_r: bool, tx_string: *mut *mut c_char) -> c_int;
+  pub fn CfdUnblindTxOut(
+      handle: *const c_void, tx_hex_string: *const c_char, tx_out_index: c_uint,
+      blinding_key: *const c_char, asset: *mut *mut c_char, value: *mut c_longlong,
+      asset_blind_factor: *mut *mut c_char, value_blind_factor: *mut *mut c_char) -> c_int;
+  pub fn CfdUnblindIssuance(
+      handle: *const c_void, tx_hex_string: *const c_char, tx_in_index: c_uint,
+      asset_blinding_key: *const c_char, token_blinding_key: *const c_char,
+      asset: *mut *mut c_char, asset_value: *mut c_longlong, asset_blind_factor: *mut *mut c_char,
+      asset_value_blind_factor: *mut *mut c_char, token: *mut *mut c_char, token_value: *mut c_longlong,
+      token_blind_factor: *mut *mut c_char, token_value_blind_factor: *mut *mut c_char) -> c_int;
+  pub fn CfdCreateConfidentialSighash(
+      handle: *const c_void, tx_hex_string: *const c_char, txid: *const c_char, vout: c_uint,
+      hash_type: c_int, pubkey: *const c_char, redeem_script: *const c_char,
+      value_satoshi: c_longlong, value_commitment: *const c_char, sighash_type: c_int,
+      sighash_anyone_can_pay: bool, sighash: *mut *mut c_char) -> c_int;
+  pub fn CfdVerifyConfidentialTxSignature(
+      handle: *const c_void, tx_hex: *const c_char, signature: *const c_char,
+      pubkey: *const c_char, script: *const c_char, txid: *const c_char, vout: c_uint,
+      sighash_type: c_int, sighash_anyone_can_pay: bool, value_satoshi: c_longlong,
+      value_commitment: *const c_char, witness_version: c_int) -> c_int;
+  pub fn CfdVerifyConfidentialTxSign(
+      handle: *const c_void, tx_hex: *const c_char, txid: *const c_char, vout: c_uint,
+      address: *const c_char, address_type: c_int, direct_locking_script: *const c_char,
+      value_satoshi: c_longlong, value_commitment: *const c_char) -> c_int;
+  pub fn CfdGetAssetCommitment(
+      handle: *const c_void, asset: *const c_char, asset_blind_factor: *const c_char,
+      asset_commitment: *mut *mut c_char) -> c_int;
+  pub fn CfdGetValueCommitment(
+      handle: *const c_void, value_satoshi: c_longlong, asset_commitment: *const c_char,
+      value_blind_factor: *const c_char, value_commitment: *mut *mut c_char) -> c_int;
+  pub fn CfdAddConfidentialTxOutput(
+      handle: *const c_void, create_handle: *const c_void, value_satoshi: c_longlong,
+      address: *const c_char, direct_locking_script: *const c_char,
+      asset_string: *const c_char, nonce: *const c_char) -> c_int;
 }
