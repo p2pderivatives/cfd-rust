@@ -339,44 +339,101 @@ fns! {
     pubkey: *const i8,
     signature: *const i8,
   ) -> c_int;
-  pub fn CfdCalculateSchnorrSignature(
+  pub fn CfdSignEcdsaAdaptor(
     handle: *const c_void,
-    oracle_privkey: *const i8,
-    k_value: *const i8,
     message: *const i8,
+    secret_key: *const i8,
+    adaptor: *const i8,
+    adaptor_signature: *mut *mut c_char,
+    adaptor_proof: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdAdaptEcdsaAdaptor(
+    handle: *const c_void,
+    adaptor_signature: *const i8,
+    adaptor_secret: *const i8,
     signature: *mut *mut c_char,
   ) -> c_int;
-  pub fn CfdCalculateSchnorrSignatureWithNonce(
+  pub fn CfdExtractEcdsaAdaptorSecret(
     handle: *const c_void,
-    oracle_privkey: *const i8,
-    k_value: *const i8,
-    message: *const i8,
-    signature: *mut *mut c_char,
-  ) -> c_int;
-  pub fn CfdVerifySchnorrSignature(
-    handle: *const c_void,
-    pubkey: *const i8,
+    adaptor_signature: *const i8,
     signature: *const i8,
-    message: *const i8,
+    adaptor: *const i8,
+    adaptor_secret: *mut *mut c_char,
   ) -> c_int;
-  pub fn CfdVerifySchnorrSignatureWithNonce(
+  pub fn CfdVerifyEcdsaAdaptor(
     handle: *const c_void,
+    adaptor_signature: *const i8,
+    proof: *const i8,
+    adaptor: *const i8,
+    message: *const i8,
     pubkey: *const i8,
-    nonce: *const i8,
-    signature: *const i8,
-    message: *const i8,
   ) -> c_int;
-  pub fn CfdGetSchnorrPubkey(
-    handle: *const c_void,
-    oracle_pubkey: *const i8,
-    oracle_r_point: *const i8,
-    message: *const i8,
-    output: *mut *mut c_char,
-  ) -> c_int;
-  pub fn CfdGetSchnorrPublicNonce(
+  pub fn CfdGetSchnorrPubkeyFromPrivkey(
     handle: *const c_void,
     privkey: *const i8,
+    pubkey: *mut *mut c_char,
+    parity: *mut bool,
+  ) -> c_int;
+  pub fn CfdGetSchnorrPubkeyFromPubkey(
+    handle: *const c_void,
+    pubkey: *const i8,
+    schnorr_pubkey: *mut *mut c_char,
+    parity: *mut bool,
+  ) -> c_int;
+  pub fn CfdSchnorrPubkeyTweakAdd(
+    handle: *const c_void,
+    pubkey: *const i8,
+    tweak: *const i8,
+    output: *mut *mut c_char,
+    parity: *mut bool,
+  ) -> c_int;
+  pub fn CfdSchnorrKeyPairTweakAdd(
+    handle: *const c_void,
+    privkey: *const i8,
+    tweak: *const i8,
+    tweaked_pubkey: *mut *mut c_char,
+    tweaked_parity: *mut bool,
+    tweaked_privkey: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdCheckTweakAddFromSchnorrPubkey(
+    handle: *const c_void,
+    tweaked_pubkey: *const i8,
+    tweaked_parity: bool,
+    base_pubkey: *const i8,
+    tweak: *const i8,
+  ) -> c_int;
+  pub fn CfdSignSchnorr(
+    handle: *const c_void,
+    message: *const i8,
+    secret_key: *const i8,
+    aux_rand: *const i8,
+    signature: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdSignSchnorrWithNonce(
+    handle: *const c_void,
+    message: *const i8,
+    secret_key: *const i8,
+    nonce: *const i8,
+    signature: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdComputeSchnorrSigPoint(
+    handle: *const c_void,
+    message: *const i8,
+    nonce: *const i8,
+    pubkey: *const i8,
+    sig_point: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdVerifySchnorr(
+    handle: *const c_void,
+    signature: *const i8,
+    message: *const i8,
+    pubkey: *const i8,
+  ) -> c_int;
+  pub fn CfdSplitSchnorrSignature(
+    handle: *const c_void,
+    signature: *const i8,
     nonce: *mut *mut c_char,
+    key: *mut *mut c_char,
   ) -> c_int;
   pub fn CfdConvertScriptAsmToHex(
     handle: *const c_void,

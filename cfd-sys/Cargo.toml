@@ -1,6 +1,6 @@
 [package]
 name = "cfd_sys"
-version = "0.0.1"
+version = "0.2.0"
 license = "MIT"
 readme = "../README.md"
 keywords = ["build-dependencies"]
