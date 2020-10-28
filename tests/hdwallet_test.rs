@@ -134,8 +134,11 @@ mod tests {
   fn hdwallet_test() {
     let word_list_en = HDWallet::mnemonic_word_list_en().expect("Fail");
     assert_eq!(2048, word_list_en.len());
+    assert_eq!("ability", word_list_en[1]);
     let word_list_ja = HDWallet::mnemonic_word_list(MnemonicLanguage::JP).expect("Fail");
     assert_eq!(2048, word_list_ja.len());
+    assert_eq!("あいさつ", word_list_ja[1]);
+
     let mnemonic_from_entropy =
       HDWallet::mnemonic_from_entropy(&[1; 32], MnemonicLanguage::EN).expect("Fail");
     assert_eq!("absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice comic", mnemonic_from_entropy);
@@ -147,6 +150,7 @@ mod tests {
       "0101010101010101010101010101010101010101010101010101010101010101",
       ByteData::from_slice(&entropy).to_hex()
     );
+
     let wallet = HDWallet::from_mnemonic(
       "absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice comic",
       MnemonicLanguage::EN,
@@ -164,6 +168,34 @@ mod tests {
       "7f26c3bb2af5ada9232e790ee117a7d6b25142a95bea799163a28044e0123ccb60ca06680011b9bbc332a80e2e3e32fdf66eb5306f5609669235211e79636f23",
       ByteData::from_slice(wallet_ph.to_seed()).to_hex()
     );
+
+    let seed1 = HDWallet::from_mnemonic_passphrase(
+      "horn tenant knee talent sponsor spell gate clip pulse soap slush warm silver nephew swap uncle crack brave",
+      MnemonicLanguage::EN,
+      "TREZOR",
+    ).expect("Fail");
+    assert_eq!(
+      "fd579828af3da1d32544ce4db5c73d53fc8acc4ddb1e3b251a31179cdb71e853c56d2fcb11aed39898ce6c34b10b5382772db8796e52837b54468aeb312cfc3d",
+      ByteData::from_slice(seed1.to_seed()).to_hex()
+    );
+
+    let seed2 = HDWallet::from_mnemonic(
+      "まぜる　むかし　じぶん　そえん　くつした　このよ　とおる　えもじ　おじさん　ねむたい　しいん　せすじ　のれん　ゆうめい　ときおり",
+      MnemonicLanguage::JP,
+    ).expect("Fail");
+    assert_eq!(
+      "4d2cd52f3ad39dc913d5a90e91163d7af4c9f11d727b273be269a404d2a23546243f8adb5009200d037900c76a3a8fc69c13afaa8084c4c85d3515232785fd54",
+      ByteData::from_slice(seed2.to_seed()).to_hex()
+    );
+    let entropy_jp = HDWallet::entropy_from_mnemonic(
+    "まぜる　むかし　じぶん　そえん　くつした　このよ　とおる　えもじ　おじさん　ねむたい　しいん　せすじ　のれん　ゆうめい　ときおり",
+    MnemonicLanguage::JP,
+    ).expect("Fail");
+    assert_eq!(
+      "e11cf99abf03d2a5e998e523373d87ba8bf1e2a9",
+      ByteData::from_slice(&entropy_jp).to_hex()
+    );
+
     let wallet2 = HDWallet::from_slice(wallet.to_seed()).expect("Fail");
     assert_eq!(wallet.to_seed(), wallet2.to_seed());
     let extkey = wallet.get_privkey(&Network::Testnet).expect("Fail");

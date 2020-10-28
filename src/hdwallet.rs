@@ -1084,9 +1084,10 @@ impl HDWallet {
     mnemonic: &str,
     lang: MnemonicLanguage,
   ) -> Result<Vec<u8>, CfdError> {
+    let tmp_mnemonic = mnemonic.replace("　", " ");
     let passphrase = alloc_c_string("")?;
     let language = alloc_c_string(&lang.to_str())?;
-    let mnemonic_str = alloc_c_string(&mnemonic)?;
+    let mnemonic_str = alloc_c_string(&tmp_mnemonic)?;
     let handle = ErrorHandle::new()?;
     let mut seed: *mut c_char = ptr::null_mut();
     let mut entropy: *mut c_char = ptr::null_mut();
@@ -1155,9 +1156,10 @@ impl HDWallet {
     lang: MnemonicLanguage,
     passphrase: &str,
   ) -> Result<HDWallet, CfdError> {
+    let tmp_mnemonic = mnemonic.replace("　", " ");
     let passphrase = alloc_c_string(passphrase)?;
     let language = alloc_c_string(&lang.to_str())?;
-    let mnemonic_str = alloc_c_string(&mnemonic)?;
+    let mnemonic_str = alloc_c_string(&tmp_mnemonic)?;
     let handle = ErrorHandle::new()?;
     let mut seed: *mut c_char = ptr::null_mut();
     let mut entropy: *mut c_char = ptr::null_mut();

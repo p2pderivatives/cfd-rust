@@ -10,6 +10,7 @@ pub mod confidential_transaction;
 pub mod descriptor;
 pub mod hdwallet;
 pub mod key;
+pub mod schnorr;
 pub mod script;
 pub mod transaction;
 
@@ -68,6 +69,18 @@ pub use key::SignParameter;
 pub use key::PRIVKEY_SIZE;
 pub use key::PUBKEY_COMPRESSED_SIZE;
 pub use key::PUBKEY_UNCOMPRESSED_SIZE;
+pub use schnorr::AdaptorPair;
+pub use schnorr::AdaptorProof;
+pub use schnorr::AdaptorSignature;
+pub use schnorr::EcdsaAdaptorUtil;
+pub use schnorr::SchnorrPubkey;
+pub use schnorr::SchnorrSignature;
+pub use schnorr::SchnorrUtil;
+pub use schnorr::ADAPTOR_PROOF_SIZE;
+pub use schnorr::ADAPTOR_SIGNATURE_SIZE;
+pub use schnorr::SCHNORR_NONCE_SIZE;
+pub use schnorr::SCHNORR_SIGNATURE_SIZE;
+
 pub use script::Script;
 pub use transaction::CoinSelectionData;
 pub use transaction::FeeData;
