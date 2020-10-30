@@ -3697,6 +3697,30 @@ impl ConfidentialTxOperation {
     target_list: &[FundTargetOption],
     fee_param: &FeeOption,
   ) -> Result<FundTransactionData, CfdError> {
+    let network = {
+      let mut net = &self.network;
+      for target in target_list {
+        if target.reserved_ct_address.valid() {
+          net = match target.reserved_ct_address.get_address().get_network_type() {
+            Network::LiquidV1 | Network::ElementsRegtest => {
+              target.reserved_ct_address.get_address().get_network_type()
+            }
+            _ => &self.network,
+          };
+          break;
+        }
+        if target.reserved_address.valid() {
+          net = match target.reserved_address.get_network_type() {
+            Network::LiquidV1 | Network::ElementsRegtest => {
+              target.reserved_address.get_network_type()
+            }
+            _ => &self.network,
+          };
+          break;
+        }
+      }
+      net
+    };
     let tx_hex = alloc_c_string(tx)?;
     let fee_asset = alloc_c_string(&fee_param.fee_asset.get_unblind_asset()?)?;
     let handle = ErrorHandle::new()?;
@@ -3704,7 +3728,7 @@ impl ConfidentialTxOperation {
     let error_code = unsafe {
       CfdInitializeFundRawTx(
         handle.as_handle(),
-        self.network.to_c_value(),
+        network.to_c_value(),
         target_list.len() as u32,
         fee_asset.as_ptr(),
         &mut fund_handle,
@@ -3769,7 +3793,11 @@ impl ConfidentialTxOperation {
           }
           for (index, target_data) in target_list.iter().enumerate() {
             let _ret = {
-              let addr = alloc_c_string(target_data.reserved_address.to_str())?;
+              let addr_str = match target_data.reserved_ct_address.valid() {
+                true => target_data.reserved_ct_address.to_str(),
+                _ => target_data.reserved_address.to_str(),
+              };
+              let addr = alloc_c_string(addr_str)?;
               let asset = alloc_c_string(&target_data.target_asset.get_unblind_asset()?)?;
               let error_code = unsafe {
                 CfdAddTargetAmountForFundRawTx(
@@ -3856,7 +3884,10 @@ impl ConfidentialTxOperation {
               match error_code {
                 0 => {
                   let addr_str = unsafe { collect_cstring_and_free(output) }?;
-                  Address::from_str(&addr_str)
+                  match ConfidentialAddress::parse(&addr_str) {
+                    Ok(ct_addr) => Ok(ct_addr.get_address().clone()),
+                    _ => Address::from_str(&addr_str),
+                  }
                 }
                 _ => Err(handle.get_error(error_code)),
               }
