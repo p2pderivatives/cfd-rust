@@ -137,7 +137,7 @@ impl ConfidentialAddress {
 
   #[inline]
   pub fn valid(&self) -> bool {
-    self.confidential_key.valid()
+    self.address.valid() && self.confidential_key.valid()
   }
 }
 

@@ -1237,6 +1237,157 @@ mod elements_tests {
   }
 
   #[test]
+  fn fund_raw_transaction_ct_regtest_address_test() {
+    let utxos = get_elements_bnb_utxo_list(&Network::ElementsRegtest);
+    let key = ExtPubkey::from_str("xpub661MyMwAqRbcGB88KaFbLGiYAat55APKhtWg4uYMkXAmfuSTbq2QYsn9sKJCj1YqZPafsboef4h4YbXXhNhPwMbkHTpkf3zLhx7HvFw1NDy").expect("Fail");
+    let set_addr1 = Address::p2wpkh(
+      key.derive_from_number(11).expect("Fail").get_pubkey(),
+      &Network::ElementsRegtest,
+    )
+    .expect("Fail");
+    let set_addr2 = Address::p2wpkh(
+      key.derive_from_number(12).expect("Fail").get_pubkey(),
+      &Network::ElementsRegtest,
+    )
+    .expect("Fail");
+
+    let mut tx = ConfidentialTransaction::create_tx(
+      2,
+      0,
+      &[],
+      &[
+        ConfidentialTxOutData::from_locking_script(
+          10000000,
+          &ConfidentialAsset::from_str(ASSET_A).expect("Fail"),
+          set_addr1.get_locking_script(),
+          &ConfidentialNonce::default(),
+        ),
+        ConfidentialTxOutData::from_locking_script(
+          500000,
+          &ConfidentialAsset::from_str(ASSET_B).expect("Fail"),
+          set_addr2.get_locking_script(),
+          &ConfidentialNonce::default(),
+        ),
+      ],
+    )
+    .expect("Fail");
+
+    let fee_asset = ConfidentialAsset::from_str(ASSET_A).expect("Fail");
+    let asset_b = ConfidentialAsset::from_str(ASSET_B).expect("Fail");
+    let ct_key = key
+      .derive_from_path("1/1")
+      .expect("Fail")
+      .get_pubkey()
+      .clone();
+    let addr1 = Address::p2wpkh(
+      key.derive_from_number(1).expect("Fail").get_pubkey(),
+      &Network::ElementsRegtest,
+    )
+    .expect("Fail");
+    let ct_addr1 = ConfidentialAddress::new(&addr1, &ct_key).expect("Fail");
+    let addr2 = Address::p2wpkh(
+      key.derive_from_number(2).expect("Fail").get_pubkey(),
+      &Network::ElementsRegtest,
+    )
+    .expect("Fail");
+    let mut target_list: Vec<FundTargetOption> = vec![];
+    target_list.push(FundTargetOption::from_asset_and_address(
+      0, &fee_asset, &ct_addr1,
+    ));
+    target_list.push(FundTargetOption::from_asset(0, &asset_b, &addr2));
+    let mut option = FeeOption::new(&Network::ElementsRegtest);
+    option.fee_rate = 0.1;
+    option.fee_asset = fee_asset;
+    let mut data = FundTransactionData::default();
+    tx = tx
+      .fund_raw_transaction(&[], &utxos, &target_list, &option, &mut data)
+      .expect("Fail");
+    let used_addr = data.reserved_address_list;
+
+    assert_eq!("0200000000020bfa8774c5f753ce2f801a8106413b470af94edbff5b4242ed4c5a26d20e72b90000000000ffffffff040b0000000000000000000000000000000000000000000000000000000000000000000000ffffffff050100000000000000000000000000000000000000000000000000000000000000aa010000000000989680001600144352a1a6e86311f22274f7ebb2746de21b09b15d0100000000000000000000000000000000000000000000000000000000000000bb01000000000007a120001600148beaaac4654cf4ebd8e46ca5062b0e7fb3e7470c0100000000000000000000000000000000000000000000000000000000000000aa0100000000000001ff00000100000000000000000000000000000000000000000000000000000000000000bb010000000001124c1e00160014a53be40113bb50f2b8b2d0bfea1e823e75632b5f0100000000000000000000000000000000000000000000000000000000000000aa0100000000004b595f034082879df418331794e4a55b87cd94d2d23cf1f22aa07081aa28b91c28b5e5a116001478eb9fc2c9e1cdf633ecb646858ba862b21384ab00000000",
+      tx.to_str());
+    assert_eq!(2, used_addr.len());
+    if used_addr.len() == 2 {
+      assert_eq!(addr2.to_str(), used_addr[0].to_str());
+      assert_eq!(ct_addr1.get_address().to_str(), used_addr[1].to_str());
+    }
+    assert_eq!(511, data.fee_amount);
+
+    // calc fee
+    let fee_utxos = [utxos[5].clone(), utxos[9].clone()];
+    let fee_data = tx
+      .estimate_fee(&fee_utxos, option.fee_rate, &option)
+      .expect("Fail");
+    assert_eq!(482, fee_data.txout_fee);
+    assert_eq!(19, fee_data.utxo_fee);
+    assert_eq!(501, fee_data.utxo_fee + fee_data.txout_fee);
+  }
+
+  #[test]
+  fn fund_raw_transaction_bitcoin_address_test() {
+    let utxos = get_elements_bnb_utxo_list(&Network::ElementsRegtest);
+    let key = ExtPubkey::from_str("xpub661MyMwAqRbcGB88KaFbLGiYAat55APKhtWg4uYMkXAmfuSTbq2QYsn9sKJCj1YqZPafsboef4h4YbXXhNhPwMbkHTpkf3zLhx7HvFw1NDy").expect("Fail");
+    let set_addr1 = Address::p2wpkh(
+      key.derive_from_number(11).expect("Fail").get_pubkey(),
+      &Network::ElementsRegtest,
+    )
+    .expect("Fail");
+    let set_addr2 = Address::p2wpkh(
+      key.derive_from_number(12).expect("Fail").get_pubkey(),
+      &Network::ElementsRegtest,
+    )
+    .expect("Fail");
+
+    let tx = ConfidentialTransaction::create_tx(
+      2,
+      0,
+      &[],
+      &[
+        ConfidentialTxOutData::from_locking_script(
+          10000000,
+          &ConfidentialAsset::from_str(ASSET_A).expect("Fail"),
+          set_addr1.get_locking_script(),
+          &ConfidentialNonce::default(),
+        ),
+        ConfidentialTxOutData::from_locking_script(
+          500000,
+          &ConfidentialAsset::from_str(ASSET_B).expect("Fail"),
+          set_addr2.get_locking_script(),
+          &ConfidentialNonce::default(),
+        ),
+      ],
+    )
+    .expect("Fail");
+
+    let fee_asset = ConfidentialAsset::from_str(ASSET_A).expect("Fail");
+    let asset_b = ConfidentialAsset::from_str(ASSET_B).expect("Fail");
+    let addr1 = Address::p2wpkh(
+      key.derive_from_number(1).expect("Fail").get_pubkey(),
+      &Network::Mainnet,
+    )
+    .expect("Fail");
+    let addr2 = Address::p2wpkh(
+      key.derive_from_number(2).expect("Fail").get_pubkey(),
+      &Network::Mainnet,
+    )
+    .expect("Fail");
+    let mut target_list: Vec<FundTargetOption> = vec![];
+    target_list.push(FundTargetOption::from_asset(0, &fee_asset, &addr1));
+    target_list.push(FundTargetOption::from_asset(0, &asset_b, &addr2));
+    let mut option = FeeOption::new(&Network::ElementsRegtest);
+    option.fee_rate = 0.1;
+    option.fee_asset = fee_asset;
+    let mut data = FundTransactionData::default();
+    let ret = tx.fund_raw_transaction(&[], &utxos, &target_list, &option, &mut data);
+    match ret {
+      Ok(_) => assert_eq!(true, false),
+      Err(err) => {
+        assert_eq!("[IllegalArgument]: Base58 decode error.", err.to_string());
+      }
+    }
+  }
+
+  #[test]
   fn raw_reissue_asset_test() {
     let desc = "sh(wpkh([ef735203/0'/0'/7']022c2409fbf657ba25d97bb3dab5426d20677b774d4fc7bd3bfac27ff96ada3dd1))#4z2vy08x";
     let desc_multi = "wsh(multi(2,03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7,03774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb,03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a))";

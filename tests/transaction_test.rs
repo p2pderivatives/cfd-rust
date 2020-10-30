@@ -721,6 +721,52 @@ mod tests {
     assert_eq!(5400, fee_data.utxo_fee);
   }
 
+  #[test]
+  fn fund_raw_transaction_regtest_address_test() {
+    let network = Network::Regtest;
+    let utxos = get_bitcoin_bnb_utxo_list(&network);
+    let key = ExtPubkey::new("xpub661MyMwAqRbcGB88KaFbLGiYAat55APKhtWg4uYMkXAmfuSTbq2QYsn9sKJCj1YqZPafsboef4h4YbXXhNhPwMbkHTpkf3zLhx7HvFw1NDy").expect("Fail");
+    let set_addr1 = Address::p2wpkh(
+      &key.derive_from_number(11).expect("Fail").get_pubkey(),
+      &network,
+    )
+    .expect("Fail");
+    let set_addr2 = Address::p2wpkh(
+      &key.derive_from_number(12).expect("Fail").get_pubkey(),
+      &network,
+    )
+    .expect("Fail");
+
+    let tx = Transaction::create_tx(
+      2,
+      0,
+      &[],
+      &[
+        TxOutData::from_address(10000000, &set_addr1),
+        TxOutData::from_address(4000000, &set_addr2),
+      ],
+    )
+    .expect("Fail");
+
+    let addr1 = Address::p2wpkh(
+      &key.derive_from_number(1).expect("Fail").get_pubkey(),
+      &network,
+    )
+    .expect("Fail");
+    let target_data = FundTargetOption::from_amount(0, &addr1);
+    let mut fee_option = FeeOption::new(&network);
+    fee_option.fee_rate = 20.0;
+    let mut fund_data = FundTransactionData::default();
+    let fund_tx = tx
+      .fund_raw_transaction(&[], &utxos, &target_data, &fee_option, &mut fund_data)
+      .expect("Fail");
+
+    assert_eq!("02000000010af4768e14f820cb9063f55833b5999119e53390ecf4bf181842909b11d0974d0000000000ffffffff0380969800000000001600144352a1a6e86311f22274f7ebb2746de21b09b15d00093d00000000001600148beaaac4654cf4ebd8e46ca5062b0e7fb3e7470ce47f19000000000016001478eb9fc2c9e1cdf633ecb646858ba862b21384ab00000000",
+    fund_tx.to_str());
+    assert_eq!(addr1.to_str(), fund_data.reserved_address_list[0].to_str());
+    assert_eq!(3860, fund_data.fee_amount);
+  }
+
   fn get_bitcoin_bnb_utxo_list(network: &Network) -> Vec<UtxoData> {
     let desc = "sh(wpkh([ef735203/0'/0'/7']022c2409fbf657ba25d97bb3dab5426d20677b774d4fc7bd3bfac27ff96ada3dd1))#4z2vy08x";
     let descriptor = Descriptor::new(desc, &network).expect("Fail");

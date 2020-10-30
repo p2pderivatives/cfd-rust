@@ -8,6 +8,7 @@ use crate::common::{
   alloc_c_string, byte_from_hex_unsafe, collect_cstring_and_free, collect_multi_cstring_and_free,
   hex_from_bytes, Amount, ByteData, CfdError, ErrorHandle, Network, ReverseContainer,
 };
+use crate::confidential_address::ConfidentialAddress;
 use crate::confidential_transaction::ConfidentialAsset;
 use crate::descriptor::Descriptor;
 use crate::key::{KeyPair, Privkey, Pubkey, SigHashType, SignParameter};
@@ -476,6 +477,7 @@ pub struct FundTargetOption {
   pub target_amount: i64,
   pub target_asset: ConfidentialAsset,
   pub reserved_address: Address,
+  pub reserved_ct_address: ConfidentialAddress,
 }
 
 impl FundTargetOption {
@@ -484,6 +486,7 @@ impl FundTargetOption {
       target_amount: amount,
       target_asset: ConfidentialAsset::default(),
       reserved_address: address.clone(),
+      reserved_ct_address: ConfidentialAddress::default(),
     }
   }
 
@@ -492,6 +495,20 @@ impl FundTargetOption {
       target_amount: amount,
       target_asset: asset.clone(),
       reserved_address: address.clone(),
+      reserved_ct_address: ConfidentialAddress::default(),
+    }
+  }
+
+  pub fn from_asset_and_address(
+    amount: i64,
+    asset: &ConfidentialAsset,
+    ct_address: &ConfidentialAddress,
+  ) -> FundTargetOption {
+    FundTargetOption {
+      target_amount: amount,
+      target_asset: asset.clone(),
+      reserved_address: Address::default(),
+      reserved_ct_address: ct_address.clone(),
     }
   }
 }
@@ -502,6 +519,7 @@ impl Default for FundTargetOption {
       target_amount: 0,
       target_asset: ConfidentialAsset::default(),
       reserved_address: Address::default(),
+      reserved_ct_address: ConfidentialAddress::default(),
     }
   }
 }
@@ -2766,6 +2784,15 @@ impl TransactionOperation {
     target_data: &FundTargetOption,
     fee_param: &FeeOption,
   ) -> Result<FundTransactionData, CfdError> {
+    let network = match target_data.reserved_address.valid() {
+      true => match target_data.reserved_address.get_network_type() {
+        Network::Mainnet | Network::Testnet | Network::Regtest => {
+          target_data.reserved_address.get_network_type()
+        }
+        _ => &Network::Mainnet,
+      },
+      _ => &Network::Mainnet,
+    };
     let empty_str = alloc_c_string("")?;
     let tx_hex = alloc_c_string(tx)?;
     let handle = ErrorHandle::new()?;
@@ -2773,7 +2800,7 @@ impl TransactionOperation {
     let error_code = unsafe {
       CfdInitializeFundRawTx(
         handle.as_handle(),
-        Network::Mainnet.to_c_value(),
+        network.to_c_value(),
         1,
         empty_str.as_ptr(),
         &mut fund_handle,
