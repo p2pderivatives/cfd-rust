@@ -10,6 +10,7 @@ use self::libc::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
 pub const BLIND_OPT_MINIMUM_RANGE_VALUE: c_int = 1;
 pub const BLIND_OPT_EXPONENT: c_int = 2;
 pub const BLIND_OPT_MINIMUM_BITS: c_int = 3;
+pub const BLIND_OPT_COLLECT_BLINDER: c_int = 4;
 
 pub const WITNESS_STACK_TYPE_NORMAL: c_int = 0;
 pub const WITNESS_STACK_TYPE_PEGIN: c_int = 1;
@@ -1045,6 +1046,12 @@ fns! {
   pub fn CfdFinalizeBlindTx(
       handle: *const c_void, blind_handle: *const c_void, tx_hex_string: *const c_char,
       tx_string: *mut *mut c_char) -> c_int;
+  pub fn CfdGetBlindTxBlindData(
+      handle: *const c_void, blind_handle: *const c_void, index: c_uint,
+      vout: *mut c_uint, asset: *mut *mut c_char, value_satoshi: *mut c_longlong,
+      asset_blind_factor: *mut *mut c_char, value_blind_factor: *mut *mut c_char,
+      issuance_txid: *mut *mut c_char, issuance_vout: *mut c_uint,
+      is_issuance_asset: *mut bool, is_issuance_token: *mut bool) -> c_int;
   pub fn CfdFreeBlindHandle(handle: *const c_void, blind_handle: *const c_void) -> c_int;
   pub fn CfdFinalizeElementsMultisigSign(
       handle: *const c_void, multi_sign_handle: *const c_void, tx_hex_string: *const c_char, txid: *const c_char, vout: c_uint, hash_type: c_int, witness_script: *const c_char,      redeem_script: *const c_char, clear_stack: bool, tx_string: *mut *mut c_char) -> c_int;

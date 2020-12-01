@@ -34,17 +34,17 @@ use self::cfd_sys::{
   CfdFinalizeCoinSelection, CfdFinalizeEstimateFee, CfdFinalizeFundRawTx, CfdFinalizeTransaction,
   CfdFreeBlindHandle, CfdFreeCoinSelectionHandle, CfdFreeEstimateFeeHandle, CfdFreeFundRawTxHandle,
   CfdFreeTransactionHandle, CfdGetAppendTxOutFundRawTx, CfdGetAssetCommitment,
-  CfdGetConfidentialTxInfoByHandle, CfdGetConfidentialTxOutSimpleByHandle,
+  CfdGetBlindTxBlindData, CfdGetConfidentialTxInfoByHandle, CfdGetConfidentialTxOutSimpleByHandle,
   CfdGetConfidentialValueHex, CfdGetDefaultBlindingKey, CfdGetIssuanceBlindingKey,
   CfdGetSelectedCoinIndex, CfdGetTxInByHandle, CfdGetTxInIndexByHandle,
   CfdGetTxInIssuanceInfoByHandle, CfdGetTxOutIndex, CfdGetValueCommitment, CfdInitializeBlindTx,
   CfdInitializeCoinSelection, CfdInitializeEstimateFee, CfdInitializeFundRawTx,
   CfdInitializeTransaction, CfdSetBlindTxOption, CfdSetOptionCoinSelection,
   CfdSetOptionEstimateFee, CfdSetRawReissueAsset, CfdUnblindIssuance, CfdUnblindTxOut,
-  CfdUpdateTxOutAmount, BLIND_OPT_EXPONENT, BLIND_OPT_MINIMUM_BITS, BLIND_OPT_MINIMUM_RANGE_VALUE,
-  COIN_OPT_BLIND_EXPONENT, COIN_OPT_BLIND_MINIMUM_BITS, DEFAULT_BLIND_MINIMUM_BITS,
-  FEE_OPT_BLIND_EXPONENT, FEE_OPT_BLIND_MINIMUM_BITS, FUND_OPT_BLIND_EXPONENT,
-  FUND_OPT_BLIND_MINIMUM_BITS, FUND_OPT_DUST_FEE_RATE, FUND_OPT_IS_BLIND,
+  CfdUpdateTxOutAmount, BLIND_OPT_COLLECT_BLINDER, BLIND_OPT_EXPONENT, BLIND_OPT_MINIMUM_BITS,
+  BLIND_OPT_MINIMUM_RANGE_VALUE, COIN_OPT_BLIND_EXPONENT, COIN_OPT_BLIND_MINIMUM_BITS,
+  DEFAULT_BLIND_MINIMUM_BITS, FEE_OPT_BLIND_EXPONENT, FEE_OPT_BLIND_MINIMUM_BITS,
+  FUND_OPT_BLIND_EXPONENT, FUND_OPT_BLIND_MINIMUM_BITS, FUND_OPT_DUST_FEE_RATE, FUND_OPT_IS_BLIND,
   FUND_OPT_KNAPSACK_MIN_CHANGE, FUND_OPT_LONG_TERM_FEE_RATE, WITNESS_STACK_TYPE_NORMAL,
   WITNESS_STACK_TYPE_PEGIN,
 };
@@ -934,6 +934,7 @@ pub struct BlindOption {
   pub minimum_range_value: i64,
   pub exponent: i32,
   pub minimum_bits: i32,
+  pub collect_blinder: bool,
 }
 
 impl Default for BlindOption {
@@ -942,6 +943,7 @@ impl Default for BlindOption {
       minimum_range_value: 1,
       exponent: 0,
       minimum_bits: DEFAULT_BLIND_MINIMUM_BITS,
+      collect_blinder: false,
     }
   }
 }
@@ -1413,6 +1415,59 @@ impl Default for Issuance {
   }
 }
 
+/// A container that stores blind data.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct BlindData {
+  pub vout: u32,
+  pub asset: ConfidentialAsset,
+  pub amount: ConfidentialValue,
+  pub asset_blind_factor: BlindFactor,
+  pub amount_blind_factor: BlindFactor,
+  pub issuance_outpoint: OutPoint,
+  pub is_issuance_asset: bool,
+  pub is_issuance_token: bool,
+}
+
+impl BlindData {
+  pub fn new(
+    vout: u32,
+    data: &UnblindData,
+    issuance_outpoint: &OutPoint,
+    is_issuance_asset: bool,
+    is_issuance_token: bool,
+  ) -> BlindData {
+    BlindData {
+      vout,
+      asset: data.asset.clone(),
+      amount: data.amount.clone(),
+      asset_blind_factor: data.asset_blind_factor.clone(),
+      amount_blind_factor: data.amount_blind_factor.clone(),
+      issuance_outpoint: issuance_outpoint.clone(),
+      is_issuance_asset,
+      is_issuance_token,
+    }
+  }
+
+  pub fn is_issuance(&self) -> bool {
+    self.is_issuance_asset || self.is_issuance_token
+  }
+}
+
+impl Default for BlindData {
+  fn default() -> BlindData {
+    BlindData {
+      vout: 0,
+      asset: ConfidentialAsset::default(),
+      amount: ConfidentialValue::default(),
+      asset_blind_factor: BlindFactor::default(),
+      amount_blind_factor: BlindFactor::default(),
+      issuance_outpoint: OutPoint::default(),
+      is_issuance_asset: false,
+      is_issuance_token: false,
+    }
+  }
+}
+
 /// A container that stores ConfidentialTransaction input.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConfidentialTxIn {
@@ -1774,7 +1829,7 @@ impl ConfidentialTransaction {
     option: &BlindOption,
   ) -> Result<ConfidentialTransaction, CfdError> {
     let mut ope = ConfidentialTxOperation::new(&Network::LiquidV1);
-    let tx = ope.blind(
+    let (tx, _, _) = ope.blind(
       &hex_from_bytes(&self.tx),
       utxos,
       issuance_keys,
@@ -1783,6 +1838,66 @@ impl ConfidentialTransaction {
       option,
     )?;
     ConfidentialTransaction::from_slice(&tx)
+  }
+
+  /// Blind transaction.
+  ///
+  /// # Arguments
+  /// * `utxos` - The utxo list.
+  /// * `issuance_keys` - The utxo list.
+  /// * `confidential_addresses` - The confidential address list. (for unset nonce)
+  /// * `direct_confidential_key_list` - The confidential key list. (for unused confidential address)
+  /// * `option` - A blinding option.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, BlindOption, ElementsUtxoData, IssuanceKeyMap, KeyIndexMap, OutPoint, ConfidentialAddress, ConfidentialAsset, ConfidentialTransaction, Pubkey, TxInData, ConfidentialTxOutData};
+  /// use std::str::FromStr;
+  /// let asset = ConfidentialAsset::from_str("0202020202020202020202020202020202020202020202020202020202020202").expect("Fail");
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// let amount11: i64 = 50000;
+  /// let amount21: i64 = 30000;
+  /// let amount22: i64 = 15000;
+  /// let amount23: i64 = 5000;
+  /// let utxo1 = ElementsUtxoData::from_outpoint(&outpoint, amount11, &asset).expect("Fail");
+  /// let txin_list = [TxInData::from_utxo(&utxo1.utxo)];
+  /// let addr1 = Address::from_string("ex1q9jfn03582uzaer4dr4ptjc0lavhf4stedyyd8a").expect("Fail");
+  /// let ct_key1 = Pubkey::from_str("03084316c0b2c90afa9242a5eb51f457b722ba08db4c19f9554c41d8cab5d907e4").expect("Fail");
+  /// let addr2 = Address::from_string("ex1qyewtv8juq97qyfcd0l3ctwsgsdnpdsgc4zmnkj").expect("Fail");
+  /// let ct_key2 = Pubkey::from_str("0304a3a881f2cd89e80b453879788155a6a7a71b60d262e23f9e94d67155282af6").expect("Fail");
+  /// let txout_list = [ConfidentialTxOutData::from_address(amount21, &asset, &addr1), ConfidentialTxOutData::from_address(amount22, &asset, &addr2), ConfidentialTxOutData::from_fee(amount23, &asset)];
+  /// let tx = ConfidentialTransaction::create_tx(2, 0, &txin_list, &txout_list).expect("Fail");
+  /// let ct_addr1 = ConfidentialAddress::new(&addr1, &ct_key1).expect("Fail");
+  /// let ct_addr2 = ConfidentialAddress::new(&addr2, &ct_key2).expect("Fail");
+  /// let ct_addr_list = [ct_addr1, ct_addr2];
+  /// let option = BlindOption::default();
+  /// let (tx2, blinder_list) = tx.blind_and_get_blinder(
+  ///   &[utxo1], &IssuanceKeyMap::default(), &ct_addr_list, &KeyIndexMap::default(), &option
+  /// ).expect("Fail");
+  /// ```
+  pub fn blind_and_get_blinder(
+    &self,
+    utxos: &[ElementsUtxoData],
+    issuance_keys: &IssuanceKeyMap,
+    confidential_addresses: &[ConfidentialAddress],
+    direct_confidential_key_list: &KeyIndexMap,
+    option: &BlindOption,
+  ) -> Result<(ConfidentialTransaction, Vec<BlindData>), CfdError> {
+    let mut opt = option.clone();
+    opt.collect_blinder = true;
+    let mut ope = ConfidentialTxOperation::new(&Network::LiquidV1);
+    let (tx, _, blinder) = ope.blind(
+      &hex_from_bytes(&self.tx),
+      utxos,
+      issuance_keys,
+      confidential_addresses,
+      direct_confidential_key_list,
+      &opt,
+    )?;
+    Ok((ConfidentialTransaction::from_slice(&tx)?, blinder))
   }
 
   /// Unblind transaction output.
@@ -2697,7 +2812,7 @@ impl ConfidentialTxOperation {
     confidential_addresses: &[ConfidentialAddress],
     direct_confidential_key_list: &KeyIndexMap,
     option: &BlindOption,
-  ) -> Result<Vec<u8>, CfdError> {
+  ) -> Result<(Vec<u8>, &String, Vec<BlindData>), CfdError> {
     // set_blind_tx_option
     let tx_str = alloc_c_string(tx)?;
     let empty_str = alloc_c_string("")?;
@@ -2790,6 +2905,13 @@ impl ConfidentialTxOperation {
             BLIND_OPT_MINIMUM_BITS,
             option.minimum_bits as i64,
           )?;
+          let collect_blinder = if option.collect_blinder { 1 } else { 0 };
+          set_blind_tx_option(
+            &handle,
+            blind_handle,
+            BLIND_OPT_COLLECT_BLINDER,
+            collect_blinder as i64,
+          )?;
           let mut output: *mut c_char = ptr::null_mut();
           let error_code = unsafe {
             CfdFinalizeBlindTx(
@@ -2799,14 +2921,90 @@ impl ConfidentialTxOperation {
               &mut output,
             )
           };
-          match error_code {
+          let mut result = match error_code {
             0 => {
               let output_tx = unsafe { collect_cstring_and_free(output) }?;
               self.last_tx = output_tx;
-              byte_from_hex(&self.last_tx)
+              Ok((byte_from_hex(&self.last_tx)?, &self.last_tx, vec![]))
             }
             _ => Err(handle.get_error(error_code)),
+          }?;
+
+          if option.collect_blinder {
+            let mut blinder_list: Vec<BlindData> = vec![];
+            let mut index: u32 = 0;
+            while index < 0xffffffff {
+              let data = {
+                let mut vout: c_uint = 0;
+                let mut asset: *mut c_char = ptr::null_mut();
+                let mut value: c_longlong = 0;
+                let mut asset_blinder: *mut c_char = ptr::null_mut();
+                let mut value_blinder: *mut c_char = ptr::null_mut();
+                let mut issuance_txid: *mut c_char = ptr::null_mut();
+                let mut issuance_vout: u32 = 0;
+                let mut is_issuance_asset = false;
+                let mut is_issuance_token = false;
+                let error_code = unsafe {
+                  CfdGetBlindTxBlindData(
+                    handle.as_handle(),
+                    blind_handle,
+                    index,
+                    &mut vout,
+                    &mut asset,
+                    &mut value,
+                    &mut asset_blinder,
+                    &mut value_blinder,
+                    &mut issuance_txid,
+                    &mut issuance_vout,
+                    &mut is_issuance_asset,
+                    &mut is_issuance_token,
+                  )
+                };
+                match error_code {
+                  0 => {
+                    let str_list = unsafe {
+                      collect_multi_cstring_and_free(&[
+                        asset,
+                        asset_blinder,
+                        value_blinder,
+                        issuance_txid,
+                      ])
+                    }?;
+                    let data = UnblindData {
+                      asset: ConfidentialAsset::from_str(&str_list[0])?,
+                      amount: ConfidentialValue::from_amount(value)?,
+                      asset_blind_factor: BlindFactor::from_str(&str_list[1])?,
+                      amount_blind_factor: BlindFactor::from_str(&str_list[2])?,
+                    };
+                    let issuance_outpoint = match str_list[3].len() {
+                      64 => OutPoint::new(&Txid::from_str(&str_list[3])?, issuance_vout),
+                      _ => OutPoint::default(),
+                    };
+                    Ok(BlindData::new(
+                      vout,
+                      &data,
+                      &issuance_outpoint,
+                      is_issuance_asset,
+                      is_issuance_token,
+                    ))
+                  }
+                  3 => {
+                    // out of range error
+                    index = 0xffffffff;
+                    Ok(BlindData::default())
+                  }
+                  _ => Err(handle.get_error(error_code)),
+                }
+              }?;
+              if index < 0xffffffff {
+                blinder_list.push(data);
+                index += 1;
+              }
+            }
+            let (tx, tx_hex, _) = result;
+            result = (tx, tx_hex, blinder_list);
           }
+          Ok(result)
         };
         unsafe { CfdFreeBlindHandle(handle.as_handle(), blind_handle) };
         ret
