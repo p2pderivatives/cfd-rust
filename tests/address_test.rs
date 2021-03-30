@@ -2,7 +2,7 @@ extern crate cfd_rust;
 
 #[cfg(test)]
 mod tests {
-  use cfd_rust::{Address, AddressType, Network, Pubkey, Script};
+  use cfd_rust::{Address, AddressType, Network, Pubkey, SchnorrPubkey, Script, WitnessVersion};
   use std::str::FromStr;
 
   #[test]
@@ -145,6 +145,38 @@ mod tests {
     assert_eq!(
       "tb1q35e8e0lppzr5c322quaujy9tcg3wd89wrxremfk6val0f6y232cs93nx0t",
       addr_p2wsh.to_str()
+    );
+
+    // taproot
+    let addr_taproot1 =
+      Address::from_str("tb1pzamhq9jglfxaj0r5ahvatr8uc77u973s5tm04yytdltsey5r8naskf8ee6")
+        .expect("Fail");
+    assert_eq!(
+      "tb1pzamhq9jglfxaj0r5ahvatr8uc77u973s5tm04yytdltsey5r8naskf8ee6",
+      addr_taproot1.to_str()
+    );
+    assert_eq!(&Network::Testnet, addr_taproot1.get_network_type());
+    assert_eq!(
+      &AddressType::TaprootAddress,
+      addr_taproot1.get_address_type()
+    );
+    assert_eq!(
+      WitnessVersion::Version1,
+      addr_taproot1.get_witness_version()
+    );
+    assert_eq!(
+      "51201777701648fa4dd93c74edd9d58cfcc7bdc2fa30a2f6fa908b6fd70c92833cfb",
+      addr_taproot1.get_locking_script().to_hex()
+    );
+    assert_eq!(
+      "1777701648fa4dd93c74edd9d58cfcc7bdc2fa30a2f6fa908b6fd70c92833cfb",
+      addr_taproot1.get_hash().to_hex()
+    );
+    let spk = SchnorrPubkey::from_slice(addr_taproot1.get_hash().to_slice()).expect("Fail");
+    let addr_taproot2 = Address::taproot(&spk, &Network::Testnet).expect("Fail");
+    assert_eq!(
+      "tb1pzamhq9jglfxaj0r5ahvatr8uc77u973s5tm04yytdltsey5r8naskf8ee6",
+      addr_taproot2.to_str()
     );
   }
 }

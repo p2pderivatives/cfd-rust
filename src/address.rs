@@ -3,10 +3,10 @@ extern crate libc;
 
 use self::libc::{c_char, c_int, c_uint, c_void};
 use crate::common::{
-  alloc_c_string, collect_cstring_and_free, collect_multi_cstring_and_free, CfdError, ErrorHandle,
-  Network,
+  alloc_c_string, collect_cstring_and_free, collect_multi_cstring_and_free, ByteData, CfdError,
+  ErrorHandle, Network,
 };
-use crate::{key::Pubkey, script::Script};
+use crate::{key::Pubkey, schnorr::SchnorrPubkey, script::Script};
 use std::fmt;
 use std::ptr;
 use std::result::Result::{Err, Ok};
@@ -32,6 +32,8 @@ pub enum HashType {
   P2shP2wpkh,
   /// p2sh-p2wsh
   P2shP2wsh,
+  /// taproot
+  Taproot,
   /// unknown type
   Unknown,
 }
@@ -45,6 +47,7 @@ impl HashType {
       4 => HashType::P2wpkh,
       5 => HashType::P2shP2wsh,
       6 => HashType::P2shP2wpkh,
+      7 => HashType::Taproot,
       _ => HashType::Unknown,
     }
   }
@@ -57,7 +60,8 @@ impl HashType {
       HashType::P2wpkh => 4,
       HashType::P2shP2wsh => 5,
       HashType::P2shP2wpkh => 6,
-      HashType::Unknown => 0,
+      HashType::Taproot => 7,
+      HashType::Unknown => 0xff,
     }
   }
 
@@ -79,6 +83,7 @@ impl HashType {
       HashType::P2wsh => AddressType::P2wshAddress,
       HashType::P2shP2wpkh => AddressType::P2shP2wpkhAddress,
       HashType::P2shP2wsh => AddressType::P2shP2wshAddress,
+      HashType::Taproot => AddressType::TaprootAddress,
       HashType::Unknown => AddressType::Unknown,
     }
   }
@@ -107,6 +112,7 @@ impl fmt::Display for HashType {
       HashType::P2wpkh => write!(f, "HashType:p2wpkh"),
       HashType::P2shP2wsh => write!(f, "HashType:p2sh-p2wsh"),
       HashType::P2shP2wpkh => write!(f, "HashType:p2sh-p2wpkh"),
+      HashType::Taproot => write!(f, "HashType:taproot"),
       HashType::Unknown => write!(f, "HashType:unknown"),
     }
   }
@@ -127,6 +133,8 @@ pub enum AddressType {
   P2shP2wpkhAddress,
   /// p2sh-p2wsh address (p2sh-segwit)
   P2shP2wshAddress,
+  /// taproot address
+  TaprootAddress,
   /// unknown address
   Unknown,
 }
@@ -140,7 +148,8 @@ impl AddressType {
       AddressType::P2wpkhAddress => 4,
       AddressType::P2shP2wshAddress => 5,
       AddressType::P2shP2wpkhAddress => 6,
-      AddressType::Unknown => 0,
+      AddressType::TaprootAddress => 7,
+      AddressType::Unknown => 0xff,
     }
   }
 
@@ -166,6 +175,7 @@ impl AddressType {
       AddressType::P2wshAddress => HashType::P2wsh,
       AddressType::P2shP2wpkhAddress => HashType::P2shP2wpkh,
       AddressType::P2shP2wshAddress => HashType::P2shP2wsh,
+      AddressType::TaprootAddress => HashType::Taproot,
       AddressType::Unknown => HashType::Unknown,
     }
   }
@@ -182,6 +192,7 @@ impl AddressType {
   /// ```
   pub fn get_witness_version(&self) -> WitnessVersion {
     match self {
+      AddressType::TaprootAddress => WitnessVersion::Version1,
       AddressType::P2wpkhAddress => WitnessVersion::Version0,
       AddressType::P2wshAddress => WitnessVersion::Version0,
       AddressType::P2shP2wpkhAddress => WitnessVersion::Version0,
@@ -200,6 +211,7 @@ impl fmt::Display for AddressType {
       AddressType::P2wpkhAddress => write!(f, "Address:p2wpkh"),
       AddressType::P2shP2wshAddress => write!(f, "Address:p2sh-p2wsh"),
       AddressType::P2shP2wpkhAddress => write!(f, "Address:p2sh-p2wpkh"),
+      AddressType::TaprootAddress => write!(f, "Address:taproot"),
       AddressType::Unknown => write!(f, "Address:unknown"),
     }
   }
@@ -280,6 +292,7 @@ pub struct Address {
   address_type: AddressType,
   p2sh_wrapped_segwit_script: Script,
   witness_version: WitnessVersion,
+  hash: ByteData,
 }
 
 impl Address {
@@ -297,7 +310,7 @@ impl Address {
   /// ```
   pub fn from_string(address: &str) -> Result<Address, CfdError> {
     let addr = alloc_c_string(address)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut network_type_c: c_int = 0;
     let mut hash_type_c: c_int = 0;
     let mut witness_version_c: c_int = 0;
@@ -318,6 +331,7 @@ impl Address {
       0 => {
         let str_list = unsafe { collect_multi_cstring_and_free(&[locking_script, hash]) }?;
         let script_obj = &str_list[0];
+        let hash_obj = ByteData::from_str(&str_list[1])?;
         let script = Script::from_hex(script_obj)?;
         let hash_type = HashType::from_c_value(hash_type_c);
         Ok(Address {
@@ -325,8 +339,9 @@ impl Address {
           locking_script: script,
           network_type: Network::from_c_value(network_type_c),
           address_type: hash_type.to_address_type(),
-          p2sh_wrapped_segwit_script: Script::default(),
           witness_version: hash_type.get_witness_version(),
+          hash: hash_obj,
+          ..Address::default()
         })
       }
       _ => Err(handle.get_error(error_code)),
@@ -353,7 +368,7 @@ impl Address {
   /// ```
   pub fn from_locking_script(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     let hex = alloc_c_string(&script.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut address: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdGetAddressFromLockingScript(
@@ -441,6 +456,7 @@ impl Address {
     let script = Script::multisig(require_num, pubkey_list)?;
     Address::get_address(
       ptr::null(),
+      ptr::null(),
       &script,
       address_type.to_c_value(),
       network_type.to_c_value(),
@@ -468,6 +484,7 @@ impl Address {
     Address::get_address(
       pubkey,
       ptr::null(),
+      ptr::null(),
       HashType::P2pkh.to_c_value(),
       network_type.to_c_value(),
     )
@@ -493,6 +510,7 @@ impl Address {
   pub fn p2wpkh(pubkey: &Pubkey, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
       pubkey,
+      ptr::null(),
       ptr::null(),
       HashType::P2wpkh.to_c_value(),
       network_type.to_c_value(),
@@ -520,6 +538,7 @@ impl Address {
     Address::get_address(
       pubkey,
       ptr::null(),
+      ptr::null(),
       HashType::P2shP2wpkh.to_c_value(),
       network_type.to_c_value(),
     )
@@ -544,6 +563,7 @@ impl Address {
   /// ```
   pub fn p2sh(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
+      ptr::null(),
       ptr::null(),
       script,
       HashType::P2sh.to_c_value(),
@@ -571,6 +591,7 @@ impl Address {
   pub fn p2wsh(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
       ptr::null(),
+      ptr::null(),
       script,
       HashType::P2wsh.to_c_value(),
       network_type.to_c_value(),
@@ -596,6 +617,7 @@ impl Address {
   /// ```
   pub fn p2sh_p2wsh(script: &Script, network_type: &Network) -> Result<Address, CfdError> {
     Address::get_address(
+      ptr::null(),
       ptr::null(),
       script,
       HashType::P2shP2wsh.to_c_value(),
@@ -627,6 +649,10 @@ impl Address {
     self.witness_version
   }
 
+  pub fn get_hash(&self) -> &ByteData {
+    &self.hash
+  }
+
   /// Get p2wpkh or p2wsh locking script on p2sh-segwit.
   ///
   /// # Example
@@ -651,6 +677,35 @@ impl Address {
     }
   }
 
+  /// Create taproot address.
+  ///
+  /// # Arguments
+  /// * `pubkey` - A schnorr public key.
+  /// * `network_type` - A target network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::Address;
+  /// use cfd_rust::Network;
+  /// use cfd_rust::Pubkey;
+  /// use cfd_rust::SchnorrPubkey;
+  /// use std::str::FromStr;
+  /// let key_str = "031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1";
+  /// let pk = Pubkey::from_str(&key_str).expect("fail");
+  /// let (key, parity) = SchnorrPubkey::from_pubkey(&pk).expect("fail");
+  /// let addr = Address::taproot(&key, &Network::Mainnet).expect("Fail");
+  /// ```
+  pub fn taproot(pubkey: &SchnorrPubkey, network_type: &Network) -> Result<Address, CfdError> {
+    Address::get_address(
+      ptr::null(),
+      pubkey,
+      ptr::null(),
+      HashType::Taproot.to_c_value(),
+      network_type.to_c_value(),
+    )
+  }
+
   /// Validate an address.
   ///
   /// # Example
@@ -668,10 +723,8 @@ impl Address {
   pub fn valid(&self) -> bool {
     if self.address.is_empty() {
       false
-    } else if let Ok(_result) = Address::from_string(&self.address) {
-      true
     } else {
-      false
+      matches!(Address::from_string(&self.address), Ok(_result))
     }
   }
 
@@ -699,7 +752,7 @@ impl Address {
     network_type: &Network,
   ) -> Result<Vec<MultisigItem>, CfdError> {
     let redeem_script = alloc_c_string(&multisig_script.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut max_key_num: c_uint = 0;
     let mut addr_multisig_keys_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe {
@@ -768,6 +821,7 @@ impl Address {
 
   fn get_address(
     pubkey: *const Pubkey,
+    schnorr_pubkey: *const SchnorrPubkey,
     script: *const Script,
     hash_type: c_int,
     network_type: c_int,
@@ -775,7 +829,10 @@ impl Address {
     let pubkey_hex = unsafe {
       match pubkey.as_ref() {
         Some(pubkey) => alloc_c_string(&pubkey.to_hex()),
-        _ => alloc_c_string(""),
+        _ => match schnorr_pubkey.as_ref() {
+          Some(schnorr_pubkey) => alloc_c_string(&schnorr_pubkey.to_hex()),
+          _ => alloc_c_string(""),
+        },
       }
     }?;
     let redeem_script = unsafe {
@@ -784,7 +841,7 @@ impl Address {
         _ => alloc_c_string(""),
       }
     }?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut address: *mut c_char = ptr::null_mut();
     let mut locking_script: *mut c_char = ptr::null_mut();
     let mut p2sh_segwit_locking_script: *mut c_char = ptr::null_mut();
@@ -805,19 +862,26 @@ impl Address {
         let str_list = unsafe {
           collect_multi_cstring_and_free(&[address, locking_script, p2sh_segwit_locking_script])
         }?;
-        let addr_obj = &str_list[0];
+        let addr_str = &str_list[0];
         let script_obj = &str_list[1];
         let segwit_obj = &str_list[2];
+        let hash_obj = unsafe {
+          match schnorr_pubkey.as_ref() {
+            Some(schnorr_pubkey) => ByteData::from_str(&schnorr_pubkey.to_hex()),
+            _ => Ok(ByteData::default()),
+          }?
+        };
         let addr_locking_script = Script::from_hex(script_obj)?;
         let segwit_script = Script::from_hex(segwit_obj)?;
         let hash_type_obj = HashType::from_c_value(hash_type);
         Ok(Address {
-          address: addr_obj.clone(),
+          address: addr_str.clone(),
           locking_script: addr_locking_script,
           network_type: Network::from_c_value(network_type),
           address_type: hash_type_obj.to_address_type(),
           p2sh_wrapped_segwit_script: segwit_script,
           witness_version: hash_type_obj.get_witness_version(),
+          hash: hash_obj,
         })
       }
       _ => Err(handle.get_error(error_code)),
@@ -849,6 +913,7 @@ impl Default for Address {
       address_type: AddressType::Unknown,
       p2sh_wrapped_segwit_script: Script::default(),
       witness_version: WitnessVersion::None,
+      hash: ByteData::default(),
     }
   }
 }
