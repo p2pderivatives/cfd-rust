@@ -10,7 +10,7 @@ use crate::common::{
 use crate::transaction::{
   set_fund_tx_option, FeeData, FeeOption, FundOptionValue, FundTargetOption, FundTransactionData,
   HashTypeData, OutPoint, ScriptWitness, SigHashOption, TransactionOperation, TxData, TxDataHandle,
-  TxInData, Txid, UtxoData, SEQUENCE_LOCK_TIME_DISABLE,
+  TxInData, Txid, UtxoData, SEQUENCE_LOCK_TIME_FINAL,
 };
 use crate::{
   address::{Address, HashType},
@@ -203,15 +203,17 @@ impl ConfidentialAsset {
         )),
       },
       32 => {
-        let mut asset_obj = ConfidentialAsset::default();
-        asset_obj.data = get_commitment_from_byte(data, 32).to_vec();
+        let asset_obj = ConfidentialAsset {
+          data: get_commitment_from_byte(data, 32).to_vec(),
+        };
         Ok(asset_obj)
       }
       33 => match data[0] {
         0 => Ok(ConfidentialAsset::default()),
         1 | 10 | 11 => {
-          let mut asset_obj = ConfidentialAsset::default();
-          asset_obj.data = get_commitment_from_byte(data, 32).to_vec();
+          let asset_obj = ConfidentialAsset {
+            data: get_commitment_from_byte(data, 32).to_vec(),
+          };
           Ok(asset_obj)
         }
         _ => Err(CfdError::IllegalArgument(
@@ -236,17 +238,11 @@ impl ConfidentialAsset {
   }
 
   pub fn is_blind(&self) -> bool {
-    match self.data[0] {
-      10 | 11 => true,
-      _ => false,
-    }
+    matches!(self.data[0], 10 | 11)
   }
 
   pub fn is_empty(&self) -> bool {
-    match self.data[0] {
-      0 => true,
-      _ => false,
-    }
+    matches!(self.data[0], 0)
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
@@ -288,7 +284,7 @@ impl ConfidentialAsset {
     }
     let asset_str = alloc_c_string(&self.to_hex())?;
     let abf_str = alloc_c_string(&asset_blind_factor.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdGetAssetCommitment(
@@ -377,15 +373,17 @@ impl ConfidentialNonce {
         )),
       },
       32 => {
-        let mut nonce_obj = ConfidentialNonce::default();
-        nonce_obj.data = get_commitment_from_byte(data, 32).to_vec();
+        let nonce_obj = ConfidentialNonce {
+          data: get_commitment_from_byte(data, 32).to_vec(),
+        };
         Ok(nonce_obj)
       }
       33 => match data[0] {
         0 => Ok(ConfidentialNonce::default()),
         1 | 2 | 3 => {
-          let mut nonce_obj = ConfidentialNonce::default();
-          nonce_obj.data = get_commitment_from_byte(data, 32).to_vec();
+          let nonce_obj = ConfidentialNonce {
+            data: get_commitment_from_byte(data, 32).to_vec(),
+          };
           Ok(nonce_obj)
         }
         _ => Err(CfdError::IllegalArgument(
@@ -427,17 +425,11 @@ impl ConfidentialNonce {
   }
 
   pub fn is_blind(&self) -> bool {
-    match self.data[0] {
-      2 | 3 => true,
-      _ => false,
-    }
+    matches!(self.data[0], 2 | 3)
   }
 
   pub fn is_empty(&self) -> bool {
-    match self.data[0] {
-      0 => true,
-      _ => false,
-    }
+    matches!(self.data[0], 0)
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
@@ -507,9 +499,10 @@ impl ConfidentialValue {
         )),
       },
       8 => {
-        let mut value_obj = ConfidentialValue::default();
-        value_obj.data = get_commitment_from_byte(data, 8).to_vec();
-        value_obj.amount = ConfidentialValue::get_amount(data);
+        let value_obj = ConfidentialValue {
+          data: get_commitment_from_byte(data, 8).to_vec(),
+          amount: ConfidentialValue::get_amount(data),
+        };
         Ok(value_obj)
       }
       9 | 33 => match data[0] {
@@ -520,8 +513,10 @@ impl ConfidentialValue {
               "Invalid value version format.".to_string(),
             ))
           } else {
-            let mut value_obj = ConfidentialValue::default();
-            value_obj.data = get_commitment_from_byte(data, 8).to_vec();
+            let mut value_obj = ConfidentialValue {
+              data: get_commitment_from_byte(data, 8).to_vec(),
+              ..ConfidentialValue::default()
+            };
             if data[0] == 1 {
               let unblind_data = get_byte_from_commitment(&value_obj.data, 8);
               value_obj.amount = ConfidentialValue::get_amount(&unblind_data);
@@ -561,7 +556,7 @@ impl ConfidentialValue {
   /// ```
   pub fn from_amount(amount: i64) -> Result<ConfidentialValue, CfdError> {
     let data = {
-      let handle = ErrorHandle::new()?;
+      let mut handle = ErrorHandle::new()?;
       let mut output: *mut c_char = ptr::null_mut();
       let error_code =
         unsafe { CfdGetConfidentialValueHex(handle.as_handle(), amount, true, &mut output) };
@@ -575,9 +570,10 @@ impl ConfidentialValue {
       handle.free_handle();
       result
     }?;
-    let mut value_obj = ConfidentialValue::default();
-    value_obj.data = get_commitment_from_byte(&data, 8).to_vec();
-    value_obj.amount = amount;
+    let value_obj = ConfidentialValue {
+      data: get_commitment_from_byte(&data, 8).to_vec(),
+      amount,
+    };
     Ok(value_obj)
   }
 
@@ -590,17 +586,11 @@ impl ConfidentialValue {
   }
 
   pub fn is_blind(&self) -> bool {
-    match self.data[0] {
-      8 | 9 => true,
-      _ => false,
-    }
+    matches!(self.data[0], 8 | 9)
   }
 
   pub fn is_empty(&self) -> bool {
-    match self.data[0] {
-      0 => true,
-      _ => false,
-    }
+    matches!(self.data[0], 0)
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
@@ -646,7 +636,7 @@ impl ConfidentialValue {
     }
     let asset_str = alloc_c_string(&asset_commitment.as_str())?;
     let vbf_str = alloc_c_string(&amount_blind_factor.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdGetValueCommitment(
@@ -719,7 +709,7 @@ pub fn get_issuance_blinding_key(
 ) -> Result<Privkey, CfdError> {
   let privkey = alloc_c_string(&master_blinding_key.to_hex())?;
   let txid = alloc_c_string(&outpoint.get_txid().to_hex())?;
-  let handle = ErrorHandle::new()?;
+  let mut handle = ErrorHandle::new()?;
   let mut output: *mut c_char = ptr::null_mut();
   let error_code = unsafe {
     CfdGetIssuanceBlindingKey(
@@ -763,7 +753,7 @@ pub fn get_default_blinding_key(
 ) -> Result<Privkey, CfdError> {
   let privkey = alloc_c_string(&master_blinding_key.to_hex())?;
   let script = alloc_c_string(&locking_script.to_hex())?;
-  let handle = ErrorHandle::new()?;
+  let mut handle = ErrorHandle::new()?;
   let mut output: *mut c_char = ptr::null_mut();
   let error_code = unsafe {
     CfdGetDefaultBlindingKey(
@@ -1212,11 +1202,12 @@ impl ConfidentialTxOutData {
     asset: &ConfidentialAsset,
     address: &Address,
   ) -> ConfidentialTxOutData {
-    let mut data = ConfidentialTxOutData::default();
-    data.amount = amount;
-    data.address = address.clone();
-    data.asset = asset.clone();
-    data
+    ConfidentialTxOutData {
+      amount,
+      address: address.clone(),
+      asset: asset.clone(),
+      ..ConfidentialTxOutData::default()
+    }
   }
 
   pub fn from_confidential_address(
@@ -1224,12 +1215,13 @@ impl ConfidentialTxOutData {
     asset: &ConfidentialAsset,
     confidential_address: &ConfidentialAddress,
   ) -> ConfidentialTxOutData {
-    let mut data = ConfidentialTxOutData::default();
-    data.amount = amount;
-    data.address = confidential_address.get_address().clone();
-    data.confidential_address = confidential_address.clone();
-    data.asset = asset.clone();
-    data
+    ConfidentialTxOutData {
+      amount,
+      address: confidential_address.get_address().clone(),
+      confidential_address: confidential_address.clone(),
+      asset: asset.clone(),
+      ..ConfidentialTxOutData::default()
+    }
   }
 
   pub fn from_locking_script(
@@ -1238,29 +1230,33 @@ impl ConfidentialTxOutData {
     locking_script: &Script,
     nonce: &ConfidentialNonce,
   ) -> ConfidentialTxOutData {
-    let mut data = ConfidentialTxOutData::default();
-    data.amount = amount;
-    data.locking_script = locking_script.clone();
-    data.nonce = nonce.clone();
-    data.asset = asset.clone();
-    data
+    ConfidentialTxOutData {
+      amount,
+      locking_script: locking_script.clone(),
+      nonce: nonce.clone(),
+      asset: asset.clone(),
+      ..ConfidentialTxOutData::default()
+    }
   }
 
   pub fn from_fee(amount: i64, asset: &ConfidentialAsset) -> ConfidentialTxOutData {
-    let mut data = ConfidentialTxOutData::default();
-    data.amount = amount;
-    data.asset = asset.clone();
-    data
+    ConfidentialTxOutData {
+      amount,
+      asset: asset.clone(),
+      ..ConfidentialTxOutData::default()
+    }
   }
 
   pub fn from_destroy_amount(
     amount: i64,
     asset: &ConfidentialAsset,
   ) -> Result<ConfidentialTxOutData, CfdError> {
-    let mut data = ConfidentialTxOutData::default();
-    data.amount = amount;
-    data.asset = asset.clone();
-    data.locking_script = Script::from_slice(&[0x6a])?;
+    let data = ConfidentialTxOutData {
+      amount,
+      asset: asset.clone(),
+      locking_script: Script::from_slice(&[0x6a])?,
+      ..ConfidentialTxOutData::default()
+    };
     Ok(data)
   }
 
@@ -1276,9 +1272,11 @@ impl ConfidentialTxOutData {
     asset: &ConfidentialAsset,
     amount: i64,
   ) -> Result<ConfidentialTxOutData, CfdError> {
-    let mut txout = ConfidentialTxOutData::default();
-    txout.asset = asset.clone();
-    txout.amount = amount;
+    let mut txout = ConfidentialTxOutData {
+      asset: asset.clone(),
+      amount,
+      ..ConfidentialTxOutData::default()
+    };
     let ct_addr_ret = ConfidentialAddress::parse(address);
     if let Ok(ct_addr) = ct_addr_ret {
       txout.confidential_address = ct_addr;
@@ -1312,9 +1310,27 @@ pub struct ConfidentialTxData {
 
 impl Default for ConfidentialTxData {
   fn default() -> ConfidentialTxData {
+    // default txid: version=2, locktime=0
+    let txid_value =
+      match Txid::from_str("c7e8a6e4ebd4981c43ff919703d54e91b4b3cb2325caf102dfc384bcad455c6f") {
+        Ok(_txid) => _txid,
+        _ => Txid::default(),
+      };
+    let wit_hash =
+      match Txid::from_str("d8a93718eaf9feba4362d2c091d4e58ccabe9f779957336269b4b917be9856da") {
+        Ok(_txid) => _txid,
+        _ => Txid::default(),
+      };
     ConfidentialTxData {
-      tx_data: TxData::default(),
-      wit_hash: Txid::default(),
+      tx_data: TxData {
+        txid: txid_value.clone(),
+        wtxid: txid_value,
+        size: 11,
+        vsize: 11,
+        weight: 44,
+        ..TxData::default()
+      },
+      wit_hash,
     }
   }
 }
@@ -1501,7 +1517,7 @@ impl Default for ConfidentialTxIn {
   fn default() -> ConfidentialTxIn {
     ConfidentialTxIn {
       outpoint: OutPoint::default(),
-      sequence: SEQUENCE_LOCK_TIME_DISABLE,
+      sequence: SEQUENCE_LOCK_TIME_FINAL,
       script_sig: Script::default(),
       issuance: Issuance::default(),
       script_witness: ScriptWitness::default(),
@@ -1531,8 +1547,10 @@ impl ConfidentialTxOut {
       } else {
         &item.locking_script
       };
-      let mut txout = ConfidentialTxOut::default();
-      txout.locking_script = script.clone();
+      let mut txout = ConfidentialTxOut {
+        locking_script: script.clone(),
+        ..ConfidentialTxOut::default()
+      };
       if let Ok(value) = ConfidentialValue::from_amount(item.amount) {
         txout.value = value;
       }
@@ -2031,6 +2049,7 @@ impl ConfidentialTransaction {
         true => ByteData::default(),
         _ => value.as_byte_data(),
       },
+      ..SigHashOption::default()
     };
     ope.create_sighash(
       &hex_from_bytes(&self.tx),
@@ -2085,6 +2104,7 @@ impl ConfidentialTransaction {
         true => ByteData::default(),
         _ => value.as_byte_data(),
       },
+      ..SigHashOption::default()
     };
     ope.create_sighash(
       &hex_from_bytes(&self.tx),
@@ -2204,6 +2224,7 @@ impl ConfidentialTransaction {
         true => ByteData::default(),
         _ => value.as_byte_data(),
       },
+      ..SigHashOption::default()
     };
     let tx = ope.sign_with_privkey(&tx_hex, outpoint, hash_type, &key, &option, true)?;
     let new_tx_hex = ope.get_last_tx();
@@ -2462,6 +2483,7 @@ impl ConfidentialTransaction {
         true => ByteData::default(),
         _ => value.as_byte_data(),
       },
+      ..SigHashOption::default()
     };
     let key = HashTypeData::from_pubkey(pubkey);
     ope.verify_signature(
@@ -2522,6 +2544,7 @@ impl ConfidentialTransaction {
         true => ByteData::default(),
         _ => value.as_byte_data(),
       },
+      ..SigHashOption::default()
     };
     let key = HashTypeData::new(pubkey, redeem_script);
     ope.verify_signature(
@@ -2577,6 +2600,7 @@ impl ConfidentialTransaction {
         true => ByteData::default(),
         _ => value.as_byte_data(),
       },
+      ..SigHashOption::default()
     };
     ope.verify_sign(
       &hex_from_bytes(&self.tx),
@@ -2633,6 +2657,7 @@ impl ConfidentialTransaction {
         true => ByteData::default(),
         _ => value.as_byte_data(),
       },
+      ..SigHashOption::default()
     };
     ope.verify_sign(
       &hex_from_bytes(&self.tx),
@@ -2751,14 +2776,11 @@ impl FromStr for ConfidentialTransaction {
 
 impl Default for ConfidentialTransaction {
   fn default() -> ConfidentialTransaction {
-    match ConfidentialTransaction::new(2, 0) {
-      Ok(tx) => tx,
-      _ => ConfidentialTransaction {
-        tx: [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0].to_vec(),
-        data: ConfidentialTxData::default(),
-        txin_list: vec![],
-        txout_list: vec![],
-      },
+    ConfidentialTransaction {
+      tx: [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0].to_vec(),
+      data: ConfidentialTxData::default(),
+      txin_list: vec![],
+      txout_list: vec![],
     }
   }
 }
@@ -2816,7 +2838,7 @@ impl ConfidentialTxOperation {
     // set_blind_tx_option
     let tx_str = alloc_c_string(tx)?;
     let empty_str = alloc_c_string("")?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut blind_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe { CfdInitializeBlindTx(handle.as_handle(), &mut blind_handle) };
     let result = match error_code {
@@ -3023,7 +3045,7 @@ impl ConfidentialTxOperation {
   ) -> Result<UnblindData, CfdError> {
     let tx_str = alloc_c_string(tx)?;
     let privkey = alloc_c_string(&blinding_key.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut asset_value: c_longlong = 0;
     let mut asset: *mut c_char = ptr::null_mut();
     let mut asset_abf: *mut c_char = ptr::null_mut();
@@ -3067,7 +3089,7 @@ impl ConfidentialTxOperation {
     let tx_str = alloc_c_string(tx)?;
     let asset_key = alloc_c_string(&asset_blinding_key.to_hex())?;
     let token_key = alloc_c_string(&token_blinding_key.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut asset_value: c_longlong = 0;
     let mut token_value: c_longlong = 0;
     let mut asset: *mut c_char = ptr::null_mut();
@@ -3137,7 +3159,7 @@ impl ConfidentialTxOperation {
     let entropy_hex = alloc_c_string(&entropy.to_hex())?;
     let address = alloc_c_string(send_address)?;
     let empty_str = alloc_c_string("")?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut asset: *mut c_char = ptr::null_mut();
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
@@ -3194,7 +3216,7 @@ impl ConfidentialTxOperation {
     amount: i64,
   ) -> Result<Vec<u8>, CfdError> {
     let tx_str = alloc_c_string(tx)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdUpdateTxOutAmount(
@@ -3220,7 +3242,7 @@ impl ConfidentialTxOperation {
 
   pub fn update_fee_amount(&mut self, tx: &str, amount: i64) -> Result<Vec<u8>, CfdError> {
     let tx_str = alloc_c_string(tx)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let result = {
       let index = {
         let mut index: c_uint = 0;
@@ -3266,7 +3288,7 @@ impl ConfidentialTxOperation {
   }
 
   pub fn get_all_data(&mut self, tx: &str) -> Result<ConfidentialTxData, CfdError> {
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let result = {
       let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
       let tx_result = {
@@ -3312,7 +3334,7 @@ impl ConfidentialTxOperation {
   }
 
   pub fn get_tx_data(&self, tx: &str) -> Result<ConfidentialTxData, CfdError> {
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let result = self.get_tx_data_internal(&handle, &TxDataHandle::empty(), tx);
     handle.free_handle();
     result
@@ -3370,7 +3392,7 @@ impl ConfidentialTxOperation {
     tx: &str,
     outpoint: &OutPoint,
   ) -> Result<ConfidentialTxIn, CfdError> {
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let result = {
       let tx_data_handle = TxDataHandle::new(&handle, &self.network, tx)?;
       let list_result = {
@@ -3573,7 +3595,7 @@ impl ConfidentialTxOperation {
     let value_commitment = alloc_c_string(&option.value_byte.to_hex())?;
     let amount = option.amount;
     let sighash_type = option.sighash_type;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateConfidentialSighash(
@@ -3616,7 +3638,7 @@ impl ConfidentialTxOperation {
     let pubkey_hex = alloc_c_string(&key.to_pubkey().to_hex())?;
     let privkey_hex = alloc_c_string(&key.to_privkey().to_hex())?;
     let value_hex = alloc_c_string(&option.value_byte.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let sighash_type = option.sighash_type;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
@@ -3657,7 +3679,7 @@ impl ConfidentialTxOperation {
   ) -> Result<FeeData, CfdError> {
     let tx_str = alloc_c_string(tx)?;
     let fee_asset = alloc_c_string(&option.fee_asset.get_unblind_asset()?)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut fee_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe {
       CfdInitializeEstimateFee(
@@ -3748,7 +3770,7 @@ impl ConfidentialTxOperation {
     fee_param: &FeeOption,
   ) -> Result<ElementsCoinSelectionData, CfdError> {
     let fee_asset = alloc_c_string(&fee_param.fee_asset.get_unblind_asset()?)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut coin_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe {
       CfdInitializeCoinSelection(
@@ -3921,7 +3943,7 @@ impl ConfidentialTxOperation {
     };
     let tx_hex = alloc_c_string(tx)?;
     let fee_asset = alloc_c_string(&fee_param.fee_asset.get_unblind_asset()?)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut fund_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe {
       CfdInitializeFundRawTx(
@@ -4179,7 +4201,7 @@ impl ConfidentialTxOperation {
     txout_list: &[ConfidentialTxOutData],
   ) -> Result<Vec<u8>, CfdError> {
     let tx_str = alloc_c_string(tx)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut create_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe {
       CfdInitializeTransaction(

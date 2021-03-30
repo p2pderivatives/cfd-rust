@@ -13,9 +13,9 @@ use std::result::Result::{Err, Ok};
 use std::str::FromStr;
 
 use self::cfd_sys::{
-  CfdAddCombinePubkey, CfdCalculateEcSignature, CfdCompressPubkey, CfdCreateKeyPair,
-  CfdDecodeSignatureFromDer, CfdEncodeSignatureByDer, CfdFinalizeCombinePubkey,
-  CfdFreeCombinePubkeyHandle, CfdGetPrivkeyWif, CfdGetPubkeyFromPrivkey,
+  CfdAddCombinePubkey, CfdAddSighashTypeInSchnorrSignature, CfdCalculateEcSignature,
+  CfdCompressPubkey, CfdCreateKeyPair, CfdDecodeSignatureFromDer, CfdEncodeSignatureByDer,
+  CfdFinalizeCombinePubkey, CfdFreeCombinePubkeyHandle, CfdGetPrivkeyWif, CfdGetPubkeyFromPrivkey,
   CfdInitializeCombinePubkey, CfdNegatePrivkey, CfdNegatePubkey, CfdNormalizeSignature,
   CfdParsePrivkeyWif, CfdPrivkeyTweakAdd, CfdPrivkeyTweakMul, CfdPubkeyTweakAdd, CfdPubkeyTweakMul,
   CfdUncompressPubkey, CfdVerifyEcSignature,
@@ -100,7 +100,7 @@ impl Privkey {
   /// ```
   pub fn from_wif(wif: &str) -> Result<Privkey, CfdError> {
     let wif_str = alloc_c_string(wif)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut privkey_hex: *mut c_char = ptr::null_mut();
     let mut is_compressed = true;
     let mut network_type: c_int = 0;
@@ -142,7 +142,7 @@ impl Privkey {
   /// let key = Privkey::generate(&Network::Mainnet, true).expect("Fail");
   /// ```
   pub fn generate(network_type: &Network, is_compressed: bool) -> Result<Privkey, CfdError> {
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut pubkey_hex: *mut c_char = ptr::null_mut();
     let mut privkey_hex: *mut c_char = ptr::null_mut();
     let mut wif: *mut c_char = ptr::null_mut();
@@ -191,7 +191,7 @@ impl Privkey {
   pub fn tweak_add(&self, data: &[u8]) -> Result<Privkey, CfdError> {
     let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
     let tweak = alloc_c_string(&hex_from_bytes(data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut tweak_privkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdPrivkeyTweakAdd(
@@ -230,7 +230,7 @@ impl Privkey {
   pub fn tweak_mul(&self, data: &[u8]) -> Result<Privkey, CfdError> {
     let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
     let tweak = alloc_c_string(&hex_from_bytes(data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut tweak_privkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdPrivkeyTweakMul(
@@ -264,7 +264,7 @@ impl Privkey {
   /// ```
   pub fn negate(&self) -> Result<Privkey, CfdError> {
     let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut negate_privkey: *mut c_char = ptr::null_mut();
     let error_code =
       unsafe { CfdNegatePrivkey(handle.as_handle(), privkey.as_ptr(), &mut negate_privkey) };
@@ -362,7 +362,7 @@ impl Privkey {
       return Ok(self.to_wif().to_string());
     }
     let privkey = alloc_c_string(&self.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut wif: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdGetPrivkeyWif(
@@ -410,7 +410,7 @@ impl Privkey {
   /// ```
   pub fn generate_pubkey(key: &[u8], is_compressed: bool) -> Result<Pubkey, CfdError> {
     let privkey = alloc_c_string(&hex_from_bytes(key))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let wif: *const i8 = ptr::null();
     let mut pubkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
@@ -455,7 +455,7 @@ impl Privkey {
   ) -> Result<SignParameter, CfdError> {
     let signature_hash = alloc_c_string(&hex_from_bytes(sighash))?;
     let privkey = alloc_c_string(&hex_from_bytes(&self.key))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let wif: *const i8 = ptr::null();
     let network_type: c_int = 0;
     let mut signature_hex: *mut c_char = ptr::null_mut();
@@ -641,7 +641,7 @@ impl Pubkey {
   /// ```
   pub fn compress(&self) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&self.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut compressed_pubkey: *mut c_char = ptr::null_mut();
     let error_code =
       unsafe { CfdCompressPubkey(handle.as_handle(), pubkey.as_ptr(), &mut compressed_pubkey) };
@@ -671,7 +671,7 @@ impl Pubkey {
   /// ```
   pub fn uncompress(&self) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&self.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut decompressed_pubkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdUncompressPubkey(
@@ -711,7 +711,7 @@ impl Pubkey {
   pub fn tweak_add(&self, data: &[u8]) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&hex_from_bytes(&self.key))?;
     let tweak = alloc_c_string(&hex_from_bytes(data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut tweak_pubkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdPubkeyTweakAdd(
@@ -750,7 +750,7 @@ impl Pubkey {
   pub fn tweak_mul(&self, data: &[u8]) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&hex_from_bytes(&self.key))?;
     let tweak = alloc_c_string(&hex_from_bytes(data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut tweak_pubkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdPubkeyTweakMul(
@@ -784,7 +784,7 @@ impl Pubkey {
   /// ```
   pub fn negate(&self) -> Result<Pubkey, CfdError> {
     let pubkey = alloc_c_string(&hex_from_bytes(&self.key))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut negate_pubkey: *mut c_char = ptr::null_mut();
     let error_code =
       unsafe { CfdNegatePubkey(handle.as_handle(), pubkey.as_ptr(), &mut negate_pubkey) };
@@ -824,7 +824,7 @@ impl Pubkey {
       return Ok(pubkey_list[0].clone());
     }
 
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut combine_handle: *mut c_void = ptr::null_mut();
     let error_code: i32 =
       unsafe { CfdInitializeCombinePubkey(handle.as_handle(), &mut combine_handle) };
@@ -887,7 +887,7 @@ impl Pubkey {
     let pubkey = alloc_c_string(&self.to_hex())?;
     let sighash_hex = alloc_c_string(&hex_from_bytes(sighash))?;
     let signature_hex = alloc_c_string(&hex_from_bytes(signature))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let error_code = unsafe {
       CfdVerifyEcSignature(
         handle.as_handle(),
@@ -938,10 +938,7 @@ impl Pubkey {
   /// ```
   #[inline]
   pub fn valid(&self) -> bool {
-    match self.compress() {
-      Ok(_result) => true,
-      _ => false,
-    }
+    matches!(self.compress(), Ok(_result))
   }
 }
 
@@ -1020,6 +1017,8 @@ impl Default for KeyPair {
 /// An enumeration definition of signature hash type.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SigHashType {
+  /// SigHashType::Default
+  Default,
   /// SigHashType::All
   All,
   /// SigHashType::None
@@ -1056,12 +1055,14 @@ impl SigHashType {
         SigHashType::Single | SigHashType::SinglePlusAnyoneCanPay => {
           SigHashType::SinglePlusAnyoneCanPay
         }
+        SigHashType::Default => SigHashType::Default,
       }
     } else {
       match sighash_type {
         SigHashType::All | SigHashType::AllPlusAnyoneCanPay => SigHashType::All,
         SigHashType::None | SigHashType::NonePlusAnyoneCanPay => SigHashType::None,
         SigHashType::Single | SigHashType::SinglePlusAnyoneCanPay => SigHashType::Single,
+        SigHashType::Default => SigHashType::Default,
       }
     }
   }
@@ -1081,12 +1082,13 @@ impl SigHashType {
       SigHashType::AllPlusAnyoneCanPay
       | SigHashType::NonePlusAnyoneCanPay
       | SigHashType::SinglePlusAnyoneCanPay => true,
-      SigHashType::All | SigHashType::None | SigHashType::Single => false,
+      SigHashType::All | SigHashType::None | SigHashType::Single | SigHashType::Default => false,
     }
   }
 
   pub(in crate) fn from_c_value(sighash_type: c_int) -> SigHashType {
     match sighash_type {
+      0 => SigHashType::Default,
       1 => SigHashType::All,
       2 => SigHashType::None,
       3 => SigHashType::Single,
@@ -1096,6 +1098,7 @@ impl SigHashType {
 
   pub(in crate) fn to_c_value(&self) -> c_int {
     match self {
+      SigHashType::Default => 0,
       SigHashType::All | SigHashType::AllPlusAnyoneCanPay => 1,
       SigHashType::None | SigHashType::NonePlusAnyoneCanPay => 2,
       SigHashType::Single | SigHashType::SinglePlusAnyoneCanPay => 3,
@@ -1106,6 +1109,7 @@ impl SigHashType {
 impl fmt::Display for SigHashType {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let _ = match *self {
+      SigHashType::Default => write!(f, "sighashType:Default"),
       SigHashType::All | SigHashType::AllPlusAnyoneCanPay => write!(f, "sighashType:All"),
       SigHashType::None | SigHashType::NonePlusAnyoneCanPay => write!(f, "sighashType:None"),
       SigHashType::Single | SigHashType::SinglePlusAnyoneCanPay => write!(f, "sighashType:Single"),
@@ -1143,7 +1147,7 @@ impl SignParameter {
   pub fn from_slice(data: &[u8]) -> SignParameter {
     SignParameter {
       data: data.to_vec(),
-      sighash_type: SigHashType::All,
+      sighash_type: SigHashType::Default,
       pubkey: Pubkey::default(),
       use_der_encode: false,
     }
@@ -1287,7 +1291,7 @@ impl SignParameter {
   /// ```
   pub fn normalize(&self) -> Result<SignParameter, CfdError> {
     let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut normalize_signature: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdNormalizeSignature(
@@ -1318,15 +1322,19 @@ impl SignParameter {
   /// let der_encoded_sig = signature.to_der_encode().expect("Fail");
   /// ```
   pub fn to_der_encode(&self) -> Result<SignParameter, CfdError> {
+    let sighashtype = match self.sighash_type {
+      SigHashType::Default => SigHashType::All,
+      _ => self.sighash_type,
+    };
     let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut der_signature: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdEncodeSignatureByDer(
         handle.as_handle(),
         signature_hex.as_ptr(),
-        self.sighash_type.to_c_value(),
-        self.sighash_type.is_anyone_can_pay(),
+        sighashtype.to_c_value(),
+        sighashtype.is_anyone_can_pay(),
         &mut der_signature,
       )
     };
@@ -1334,7 +1342,7 @@ impl SignParameter {
       0 => {
         let der_encoded = unsafe { collect_cstring_and_free(der_signature) }?;
         let mut sig = SignParameter::from_vec(byte_from_hex_unsafe(&der_encoded));
-        sig.sighash_type = self.sighash_type;
+        sig.sighash_type = sighashtype;
         Ok(sig)
       }
       _ => Err(handle.get_error(error_code)),
@@ -1355,7 +1363,7 @@ impl SignParameter {
   /// ```
   pub fn to_der_decode(&self) -> Result<SignParameter, CfdError> {
     let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut signature: *mut c_char = ptr::null_mut();
     let mut sighash_type_value: c_int = 0;
     let mut is_anyone_can_pay = false;
@@ -1379,6 +1387,36 @@ impl SignParameter {
     };
     handle.free_handle();
     result
+  }
+
+  pub fn append_taproot_sighash_type(&self) -> Result<SignParameter, CfdError> {
+    if self.data.len() != 64 || self.sighash_type == SigHashType::Default {
+      Ok(self.clone())
+    } else {
+      let signature_hex = alloc_c_string(&hex_from_bytes(&self.data))?;
+      let mut handle = ErrorHandle::new()?;
+      let mut added_signature: *mut c_char = ptr::null_mut();
+      let error_code = unsafe {
+        CfdAddSighashTypeInSchnorrSignature(
+          handle.as_handle(),
+          signature_hex.as_ptr(),
+          self.sighash_type.to_c_value(),
+          self.sighash_type.is_anyone_can_pay(),
+          &mut added_signature,
+        )
+      };
+      let result = match error_code {
+        0 => {
+          let sig = unsafe { collect_cstring_and_free(added_signature) }?;
+          let mut sig = SignParameter::from_vec(byte_from_hex_unsafe(&sig));
+          sig.sighash_type = self.sighash_type;
+          Ok(sig)
+        }
+        _ => Err(handle.get_error(error_code)),
+      };
+      handle.free_handle();
+      result
+    }
   }
 }
 

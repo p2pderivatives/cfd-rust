@@ -38,6 +38,8 @@ pub enum CfdError {
   DiskAccess(String),
   /// Sign verification error.
   SignVerification(String),
+  /// Not found error.
+  NotFound(String),
 }
 
 impl fmt::Display for CfdError {
@@ -53,6 +55,7 @@ impl fmt::Display for CfdError {
       CfdError::Connection(ref a) => write!(f, "[Connection]: {}", a),
       CfdError::DiskAccess(ref a) => write!(f, "[DiskAccess]: {}", a),
       CfdError::SignVerification(ref a) => write!(f, "[SignVerification]: {}", a),
+      CfdError::NotFound(ref a) => write!(f, "[NotFound]: {}", a),
     }
   }
 }
@@ -70,6 +73,7 @@ impl error::Error for CfdError {
       CfdError::Connection(..) => "connection error",
       CfdError::DiskAccess(..) => "disk access error",
       CfdError::SignVerification(..) => "sign verification error",
+      CfdError::NotFound(..) => "Not found error",
     }
   }
 }
@@ -272,6 +276,23 @@ impl ByteData {
     self.data.is_empty()
   }
 
+  /// Output fixed 32byte array into byte data.
+  /// If the size of the byte data is less than 32 bytes, it returns an array of all zeros.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::ByteData;
+  /// use std::str::FromStr;
+  /// let data = ByteData::from_str(
+  ///   "4691fbb1196f4675241c8958a7ab6378a63aa0cc008ed03d216fd038357f52fd",
+  /// ).expect("Fail");
+  /// let array = data.to_32byte_array();
+  /// ```
+  pub fn to_32byte_array(&self) -> [u8; 32] {
+    copy_array_32byte(&self.data)
+  }
+
   /// Get serialized byte data.
   ///
   /// # Example
@@ -286,7 +307,7 @@ impl ByteData {
   /// ```
   pub fn serialize(&self) -> Result<ByteData, CfdError> {
     let buffer = alloc_c_string(&hex_from_bytes(&self.data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code =
       unsafe { CfdSerializeByteData(handle.as_handle(), buffer.as_ptr(), &mut output) };
@@ -429,7 +450,7 @@ impl Amount {
   /// // byte_data == "a086010000000000"
   /// ```
   pub fn as_byte(&self) -> Result<Vec<u8>, CfdError> {
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut output: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdGetConfidentialValueHex(handle.as_handle(), self.satoshi_amount, true, &mut output)
@@ -519,8 +540,9 @@ impl FromStr for ReverseContainer {
     } else {
       let byte_data = ByteData::from_slice_reverse(&bytes);
       let reverse_bytes = byte_data.to_slice();
-      let mut data = ReverseContainer::default();
-      data.data = copy_array_32byte(&reverse_bytes);
+      let data = ReverseContainer {
+        data: copy_array_32byte(&reverse_bytes),
+      };
       Ok(data)
     }
   }
@@ -541,7 +563,7 @@ impl Default for ReverseContainer {
 pub fn request_json(request: &str, option: &str) -> Result<String, CfdError> {
   let req_name = alloc_c_string(request)?;
   let opt_data = alloc_c_string(option)?;
-  let handle = ErrorHandle::new()?;
+  let mut handle = ErrorHandle::new()?;
   let mut output: *mut c_char = ptr::null_mut();
   let error_code = unsafe {
     CfdRequestExecuteJson(
@@ -607,19 +629,17 @@ impl ErrorHandle {
   }
 
   // FIXME: I might use Drop and Rc<T>.
-  pub fn free_handle(&self) -> bool {
+  pub fn free_handle(&mut self) -> bool {
     unsafe {
       let mut result: bool = false;
-      if self.handle.is_null() {
-        // println!("CfdFreeHandle NG. null-ptr.");
-      } else {
+      if !self.handle.is_null() {
         let cfd_ret = CfdFreeHandle(self.handle);
         if cfd_ret == 0 {
-          // self.handle = ptr::null_mut();
           result = true;
         } else {
           println!("CfdFreeHandle NG:{}", cfd_ret);
         }
+        self.handle = ptr::null_mut();
       }
       result
     }
@@ -638,6 +658,7 @@ impl ErrorHandle {
       5 => CfdError::Connection(err_msg),
       6 => CfdError::DiskAccess(err_msg),
       7 => CfdError::SignVerification(err_msg),
+      8 => CfdError::NotFound(err_msg),
       _ => CfdError::Unknown(err_msg),
     }
   }

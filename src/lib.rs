@@ -82,6 +82,10 @@ pub use schnorr::SCHNORR_NONCE_SIZE;
 pub use schnorr::SCHNORR_SIGNATURE_SIZE;
 
 pub use script::Script;
+pub use script::TapBranch;
+pub use script::TAPROOT_HASH_SIZE;
+pub use script::TAPSCRIPT_LEAF_VERSION;
+
 pub use transaction::CoinSelectionData;
 pub use transaction::FeeData;
 pub use transaction::FeeOption;
@@ -97,5 +101,7 @@ pub use transaction::TxOut;
 pub use transaction::TxOutData;
 pub use transaction::Txid;
 pub use transaction::UtxoData;
-pub use transaction::SEQUENCE_LOCK_TIME_DISABLE;
+pub use transaction::CODE_SEPARATOR_POSITION_FINAL;
 pub use transaction::SEQUENCE_LOCK_TIME_ENABLE_MAX;
+pub use transaction::SEQUENCE_LOCK_TIME_FINAL;
+pub use transaction::TXID_SIZE;

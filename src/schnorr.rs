@@ -6,7 +6,7 @@ use crate::common::{
   alloc_c_string, byte_from_hex, collect_cstring_and_free, collect_multi_cstring_and_free,
   copy_array_32byte, hex_from_bytes, ByteData, CfdError, ErrorHandle,
 };
-use crate::key::{Privkey, Pubkey};
+use crate::key::{Privkey, Pubkey, SigHashType, SignParameter};
 use std::fmt;
 use std::ptr;
 use std::result::Result::{Err, Ok};
@@ -235,7 +235,7 @@ impl EcdsaAdaptorUtil {
     let msg_hex = alloc_c_string(&msg.to_hex())?;
     let sk_hex = alloc_c_string(&secret_key.to_hex())?;
     let adaptor_hex = alloc_c_string(&adaptor.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut signature: *mut c_char = ptr::null_mut();
     let mut proof: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
@@ -287,7 +287,7 @@ impl EcdsaAdaptorUtil {
   ) -> Result<ByteData, CfdError> {
     let sig_hex = alloc_c_string(&adaptor_signature.to_hex())?;
     let sk_hex = alloc_c_string(&adaptor_secret.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut signature: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdAdaptEcdsaAdaptor(
@@ -335,7 +335,7 @@ impl EcdsaAdaptorUtil {
     let adaptor_sig_hex = alloc_c_string(&adaptor_signature.to_hex())?;
     let sig_hex = alloc_c_string(&signature.to_hex())?;
     let adaptor_hex = alloc_c_string(&adaptor.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut secret: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdExtractEcdsaAdaptorSecret(
@@ -392,7 +392,7 @@ impl EcdsaAdaptorUtil {
     let adaptor_hex = alloc_c_string(&adaptor.to_hex())?;
     let msg_hex = alloc_c_string(&msg.to_hex())?;
     let pubkey_hex = alloc_c_string(&pubkey.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let error_code = unsafe {
       CfdVerifyEcdsaAdaptor(
         handle.as_handle(),
@@ -463,7 +463,7 @@ impl SchnorrSignature {
       ));
     }
     let signature_hex = alloc_c_string(&hex_from_bytes(&data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut nonce_hex: *mut c_char = ptr::null_mut();
     let mut key_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
@@ -510,6 +510,23 @@ impl SchnorrSignature {
   #[inline]
   pub fn as_key(&self) -> &Privkey {
     &self.key
+  }
+
+  /// Get sign parameter.
+  ///
+  /// # Arguments
+  /// * `sighash_type` - A signature hash type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{SchnorrSignature, SigHashType};
+  /// let bytes = [2; 64];
+  /// let sig = SchnorrSignature::from_vec(bytes.to_vec()).expect("Fail");
+  /// let sign_param = sig.get_sign_parameter(&SigHashType::All);
+  /// ```
+  pub fn get_sign_parameter(&self, sighash_type: &SigHashType) -> SignParameter {
+    SignParameter::from_slice(&self.data).set_signature_hash(sighash_type)
   }
 }
 
@@ -596,7 +613,7 @@ impl SchnorrPubkey {
   /// ```
   pub fn from_privkey(key: &Privkey) -> Result<(SchnorrPubkey, bool), CfdError> {
     let key_hex = alloc_c_string(&key.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut pubkey_hex: *mut c_char = ptr::null_mut();
     let mut parity = false;
     let error_code = unsafe {
@@ -635,7 +652,7 @@ impl SchnorrPubkey {
   /// ```
   pub fn from_pubkey(key: &Pubkey) -> Result<(SchnorrPubkey, bool), CfdError> {
     let key_hex = alloc_c_string(&key.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut pubkey_hex: *mut c_char = ptr::null_mut();
     let mut parity = false;
     let error_code = unsafe {
@@ -680,7 +697,7 @@ impl SchnorrPubkey {
   ) -> Result<(SchnorrPubkey, bool, Privkey), CfdError> {
     let key_hex = alloc_c_string(&key.to_hex())?;
     let tweak_hex = alloc_c_string(&hex_from_bytes(data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut pubkey_hex: *mut c_char = ptr::null_mut();
     let mut privkey_hex: *mut c_char = ptr::null_mut();
     let mut parity = false;
@@ -744,7 +761,7 @@ impl SchnorrPubkey {
   pub fn tweak_add(&self, data: &[u8]) -> Result<(SchnorrPubkey, bool), CfdError> {
     let key_hex = alloc_c_string(&self.to_hex())?;
     let tweak_hex = alloc_c_string(&hex_from_bytes(data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut pubkey_hex: *mut c_char = ptr::null_mut();
     let mut parity = false;
     let error_code = unsafe {
@@ -792,7 +809,7 @@ impl SchnorrPubkey {
     let key_hex = alloc_c_string(&self.to_hex())?;
     let base_key_hex = alloc_c_string(&base_pubkey.to_hex())?;
     let tweak_hex = alloc_c_string(&hex_from_bytes(data))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let error_code = unsafe {
       CfdCheckTweakAddFromSchnorrPubkey(
         handle.as_handle(),
@@ -873,7 +890,7 @@ impl SchnorrUtil {
     let msg_hex = alloc_c_string(&msg.to_hex())?;
     let sk_hex = alloc_c_string(&secret_key.to_hex())?;
     let rand_hex = alloc_c_string(&aux_rand.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut signature: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdSignSchnorr(
@@ -922,7 +939,7 @@ impl SchnorrUtil {
     let msg_hex = alloc_c_string(&msg.to_hex())?;
     let sk_hex = alloc_c_string(&secret_key.to_hex())?;
     let nonce_hex = alloc_c_string(&nonce.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut signature: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdSignSchnorrWithNonce(
@@ -971,7 +988,7 @@ impl SchnorrUtil {
     let msg_hex = alloc_c_string(&msg.to_hex())?;
     let nonce_hex = alloc_c_string(&nonce.to_hex())?;
     let pubkey_hex = alloc_c_string(&pubkey.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut sig_point: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdComputeSchnorrSigPoint(
@@ -1020,7 +1037,7 @@ impl SchnorrUtil {
     let sig_hex = alloc_c_string(&signature.to_hex())?;
     let msg_hex = alloc_c_string(&msg.to_hex())?;
     let pubkey_hex = alloc_c_string(&pubkey.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let error_code = unsafe {
       CfdVerifySchnorr(
         handle.as_handle(),

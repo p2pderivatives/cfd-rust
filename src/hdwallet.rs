@@ -67,7 +67,7 @@ pub struct ExtKey {
 
 fn generate_pubkey(extkey: &str, network_type: Network) -> Result<Pubkey, CfdError> {
   let extkey_str = alloc_c_string(extkey)?;
-  let handle = ErrorHandle::new()?;
+  let mut handle = ErrorHandle::new()?;
   let mut pubkey_hex: *mut c_char = ptr::null_mut();
   let error_code = unsafe {
     CfdGetPubkeyFromExtkey(
@@ -90,7 +90,7 @@ fn generate_pubkey(extkey: &str, network_type: Network) -> Result<Pubkey, CfdErr
 
 fn generate_privkey(extkey: &str, network_type: Network) -> Result<Privkey, CfdError> {
   let extkey_str = alloc_c_string(extkey)?;
-  let handle = ErrorHandle::new()?;
+  let mut handle = ErrorHandle::new()?;
   let mut privkey_hex: *mut c_char = ptr::null_mut();
   let mut wif: *mut c_char = ptr::null_mut();
   let error_code = unsafe {
@@ -117,7 +117,7 @@ fn generate_privkey(extkey: &str, network_type: Network) -> Result<Privkey, CfdE
 impl ExtKey {
   fn from_extkey(extkey: &str) -> Result<ExtKey, CfdError> {
     let extkey_str = alloc_c_string(extkey)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut version: *mut c_char = ptr::null_mut();
     let mut fingerprint: *mut c_char = ptr::null_mut();
     let mut chain_code: *mut c_char = ptr::null_mut();
@@ -176,7 +176,7 @@ impl ExtKey {
     key_type: &ExtKeyType,
   ) -> Result<ExtKey, CfdError> {
     let extkey_str = alloc_c_string(&self.extkey)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut extkey_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtkeyFromParent(
@@ -222,7 +222,7 @@ impl ExtKey {
   ) -> Result<ExtKey, CfdError> {
     let extkey_str = alloc_c_string(&self.extkey)?;
     let path_str = alloc_c_string(path)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut extkey_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtkeyFromParentPath(
@@ -324,7 +324,7 @@ impl ExtPrivkey {
   /// ```
   pub fn from_seed(seed: &[u8], network_type: &Network) -> Result<ExtPrivkey, CfdError> {
     let seed_str = alloc_c_string(&hex_from_bytes(seed))?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut extkey_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtkeyFromSeed(
@@ -448,7 +448,7 @@ impl ExtPrivkey {
   /// ```
   pub fn get_ext_pubkey(&self) -> Result<ExtPubkey, CfdError> {
     let extkey_str = alloc_c_string(&self.extkey.to_str())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut ext_pubkey_hex: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtPubkey(
@@ -739,7 +739,7 @@ impl ExtPubkey {
     }?;
     let pubkey_hex = alloc_c_string(&pubkey.to_hex())?;
     let chain_code_hex = alloc_c_string(&chain_code.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut extkey: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateExtkey(
@@ -975,7 +975,7 @@ impl HDWallet {
   /// ```
   pub fn mnemonic_word_list(lang: MnemonicLanguage) -> Result<Vec<String>, CfdError> {
     let language = alloc_c_string(&lang.to_str())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut max_num: c_uint = 0;
     let mut mnemonic_handle: *mut c_void = ptr::null_mut();
     let error_code = unsafe {
@@ -1047,7 +1047,7 @@ impl HDWallet {
   pub fn mnemonic_from_entropy(entropy: &[u8], lang: MnemonicLanguage) -> Result<String, CfdError> {
     let entropy_hex = alloc_c_string(&hex_from_bytes(&entropy))?;
     let language = alloc_c_string(&lang.to_str())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut mnemonic: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdConvertEntropyToMnemonic(
@@ -1088,7 +1088,7 @@ impl HDWallet {
     let passphrase = alloc_c_string("")?;
     let language = alloc_c_string(&lang.to_str())?;
     let mnemonic_str = alloc_c_string(&tmp_mnemonic)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut seed: *mut c_char = ptr::null_mut();
     let mut entropy: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
@@ -1160,7 +1160,7 @@ impl HDWallet {
     let passphrase = alloc_c_string(passphrase)?;
     let language = alloc_c_string(&lang.to_str())?;
     let mnemonic_str = alloc_c_string(&tmp_mnemonic)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut seed: *mut c_char = ptr::null_mut();
     let mut entropy: *mut c_char = ptr::null_mut();
     let error_code = unsafe {

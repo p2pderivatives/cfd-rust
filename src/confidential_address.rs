@@ -49,7 +49,7 @@ impl ConfidentialAddress {
   ) -> Result<ConfidentialAddress, CfdError> {
     let addr = alloc_c_string(address.to_str())?;
     let ct_key = alloc_c_string(&confidential_key.to_hex())?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut confidential_address: *mut c_char = ptr::null_mut();
     let error_code = unsafe {
       CfdCreateConfidentialAddress(
@@ -88,7 +88,7 @@ impl ConfidentialAddress {
   /// ```
   pub fn parse(confidential_address: &str) -> Result<ConfidentialAddress, CfdError> {
     let ct_addr = alloc_c_string(confidential_address)?;
-    let handle = ErrorHandle::new()?;
+    let mut handle = ErrorHandle::new()?;
     let mut network_type_c: c_int = 0;
     let mut address: *mut c_char = ptr::null_mut();
     let mut confidential_key: *mut c_char = ptr::null_mut();
