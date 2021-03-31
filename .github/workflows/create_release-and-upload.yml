@@ -77,8 +77,7 @@ jobs:
     - name: cmake-build
       run: |
         cd cfd-sys/cfd-cmake
-        cmake -S . -B build
-        cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=${{ matrix.shared }} -DENABLE_CAPI=on -DENABLE_TESTS=off -DENABLE_JS_WRAPPER=off --build build
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=${{ matrix.shared }} -DENABLE_CAPI=on -DENABLE_TESTS=off -DENABLE_JS_WRAPPER=off
         cmake --build build --parallel 2 --config Release
         cd ../..
       timeout-minutes: 20
