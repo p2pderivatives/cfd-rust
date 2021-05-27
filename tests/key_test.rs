@@ -3,7 +3,7 @@ extern crate sha2;
 
 #[cfg(test)]
 mod tests {
-  use cfd_rust::{ByteData, Network, Privkey, Pubkey, SignParameter};
+  use cfd_rust::{ByteData, Network, Privkey, Pubkey, SigHashType, SignParameter};
   use std::str::FromStr;
 
   #[test]
@@ -192,5 +192,32 @@ mod tests {
     assert_eq!("30440220773420c0ded41a55b1f1205cfb632f08f3f911a53e7338a0dac73ec6cbe3ca4702201907434d046185abedc5afddc2761a642bccc70af6d22b46394f1d04a8b2422601", der_encoded_sig.to_hex());
     let der_decoded_sig = der_encoded_sig.to_der_decode().expect("Fail");
     assert_eq!("773420c0ded41a55b1f1205cfb632f08f3f911a53e7338a0dac73ec6cbe3ca471907434d046185abedc5afddc2761a642bccc70af6d22b46394f1d04a8b24226", der_decoded_sig.to_hex());
+
+    // sighash rangeproof test
+    let sighashtype_array = vec![
+      // SigHashType::Default, // unuse der encode.
+      SigHashType::All,
+      SigHashType::None,
+      SigHashType::Single,
+      SigHashType::AllPlusAnyoneCanPay,
+      SigHashType::NonePlusAnyoneCanPay,
+      SigHashType::SinglePlusAnyoneCanPay,
+      SigHashType::AllPlusRangeproof,
+      SigHashType::NonePlusRangeproof,
+      SigHashType::SinglePlusRangeproof,
+      SigHashType::AllPlusAnyoneCanPayRangeproof,
+      SigHashType::NonePlusAnyoneCanPayRangeproof,
+      SigHashType::SinglePlusAnyoneCanPayRangeproof,
+    ];
+    let sig_str = "773420c0ded41a55b1f1205cfb632f08f3f911a53e7338a0dac73ec6cbe3ca471907434d046185abedc5afddc2761a642bccc70af6d22b46394f1d04a8b24226";
+    for sighash_type2 in sighashtype_array {
+      let signature2 = SignParameter::from_str(sig_str)
+        .expect("Fail")
+        .set_signature_hash(&sighash_type2);
+      let der_encoded_sig2 = signature2.to_der_encode().expect("Fail");
+      let der_decoded_sig2 = der_encoded_sig2.to_der_decode().expect("Fail");
+      assert_eq!(sig_str, der_decoded_sig2.to_hex());
+      assert_eq!(&sighash_type2, der_decoded_sig2.get_sighash_type());
+    }
   }
 }

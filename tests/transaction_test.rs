@@ -1326,4 +1326,76 @@ mod tests {
       .expect("Fail");
     assert_eq!(true, is_verify);
   }
+
+  #[test]
+  fn split_txout_test() {
+    let mut tx = Transaction::from_str("0200000001ffa8db90b81db256874ff7a98fb7202cdc0b91b5b02d7c3427c4190adc66981f0000000000ffffffff0118f50295000000002251201777701648fa4dd93c74edd9d58cfcc7bdc2fa30a2f6fa908b6fd70c92833cfb00000000").expect("Fail");
+    tx = tx
+      .split_txout(
+        0,
+        &[TxOutData::from_address(
+          499999000,
+          &Address::from_str("bc1qz33wef9ehrvd7c64p27jf5xtvn50946xfzpxx4").expect("Fail"),
+        )],
+      )
+      .expect("Fail");
+    assert_eq!("0200000001ffa8db90b81db256874ff7a98fb7202cdc0b91b5b02d7c3427c4190adc66981f0000000000ffffffff0200943577000000002251201777701648fa4dd93c74edd9d58cfcc7bdc2fa30a2f6fa908b6fd70c92833cfb1861cd1d000000001600141462eca4b9b8d8df63550abd24d0cb64e8f2d74600000000",
+      tx.to_str());
+
+    tx = Transaction::from_str("0200000001ffa8db90b81db256874ff7a98fb7202cdc0b91b5b02d7c3427c4190adc66981f0000000000ffffffff0118f50295000000002251201777701648fa4dd93c74edd9d58cfcc7bdc2fa30a2f6fa908b6fd70c92833cfb00000000").expect("Fail");
+    tx = tx
+      .split_txout(
+        0,
+        &[
+          TxOutData::from_locking_script(
+            400000000,
+            &Script::from_hex("00141462eca4b9b8d8df63550abd24d0cb64e8f2d746").expect("Fail"),
+          ),
+          TxOutData::from_locking_script(
+            99999000,
+            &Script::from_hex("0014164e985d0fc92c927a66c0cbaf78e6ea389629d5").expect("Fail"),
+          ),
+        ],
+      )
+      .expect("Fail");
+    assert_eq!("0200000001ffa8db90b81db256874ff7a98fb7202cdc0b91b5b02d7c3427c4190adc66981f0000000000ffffffff0300943577000000002251201777701648fa4dd93c74edd9d58cfcc7bdc2fa30a2f6fa908b6fd70c92833cfb0084d717000000001600141462eca4b9b8d8df63550abd24d0cb64e8f2d74618ddf50500000000160014164e985d0fc92c927a66c0cbaf78e6ea389629d500000000",
+      tx.to_str());
+  }
+
+  #[test]
+  fn update_witness_stack_test() {
+    let mut tx = Transaction::from_str("020000000001014cdeada737db97af334f0fa4e87432d6068759eea65a3067d1f14a979e5a9dea0000000000ffffffff010cdff5050000000017a91426b9ba9cf5d822b70cf490ad0394566f9db20c63870247304402200b3ca71e82551a333fe5c8ce9a8f8454eb8f08aa194180e5a87c79ccf2e46212022065c1f2a363ebcb155a80e234258394140d08f6ab807581953bb21a58f2d229a6012102fd54c734e48c544c3c3ad1aab0607f896eb95e23e7058b174a580826a7940ad800000000").expect("Fail");
+    tx = tx
+      .update_witness_stack(
+        &OutPoint::from_str(
+          "ea9d5a9e974af1d167305aa6ee598706d63274e8a40f4f33af97db37a7adde4c",
+          0,
+        )
+        .expect("Fail"),
+        1,
+        &ByteData::from_str("03aab896d53a8e7d6433137bbba940f9c521e085dd07e60994579b64a6d992cf79")
+          .expect("Fail"),
+      )
+      .expect("Fail");
+    assert_eq!(
+      "020000000001014cdeada737db97af334f0fa4e87432d6068759eea65a3067d1f14a979e5a9dea0000000000ffffffff010cdff5050000000017a91426b9ba9cf5d822b70cf490ad0394566f9db20c63870247304402200b3ca71e82551a333fe5c8ce9a8f8454eb8f08aa194180e5a87c79ccf2e46212022065c1f2a363ebcb155a80e234258394140d08f6ab807581953bb21a58f2d229a6012103aab896d53a8e7d6433137bbba940f9c521e085dd07e60994579b64a6d992cf7900000000",
+      tx.to_str());
+  }
+
+  #[test]
+  fn get_txout_index_test() {
+    let tx = Transaction::from_str(
+      "02000000034cdeada737db97af334f0fa4e87432d6068759eea65a3067d1f14a979e5a9dea0000000000ffffffff81ddd34c6c0c32544e3b89f5e24c6cd7afca62f2b5069281ac9fced6251191d20000000000ffffffff81ddd34c6c0c32544e3b89f5e24c6cd7afca62f2b5069281ac9fced6251191d20100000000ffffffff040200000000000000220020c5ae4ff17cec055e964b573601328f3f879fa441e53ef88acdfd4d8e8df429ef406f400100000000220020ea5a7208cddfbc20dd93e12bf29deb00b68c056382a502446c9c5b55490954d215cd5b0700000000220020f39f6272ba6b57918eb047c5dc44fb475356b0f24c12fca39b19284e80008a42406f400100000000220020ea5a7208cddfbc20dd93e12bf29deb00b68c056382a502446c9c5b55490954d200000000").expect("Fail");
+    let indexes = tx
+      .get_txout_indexes_by_address(
+        &Address::from_str("bc1qafd8yzxdm77zphvnuy4l980tqzmgcptrs2jsy3rvn3d42jgf2nfqc4zt4j")
+          .expect("Fail"),
+      )
+      .expect("Fail");
+    assert_eq!(2, indexes.len());
+    if indexes.len() == 2 {
+      assert_eq!(1, indexes[0]);
+      assert_eq!(3, indexes[1]);
+    }
+  }
 }

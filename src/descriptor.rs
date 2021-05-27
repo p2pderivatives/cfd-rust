@@ -9,7 +9,8 @@ use crate::common::{
 };
 use crate::hdwallet::{ExtPrivkey, ExtPubkey};
 use crate::key::Pubkey;
-use crate::script::Script;
+use crate::schnorr::SchnorrPubkey;
+use crate::script::{Script, TapBranch};
 use std::fmt;
 use std::ptr;
 use std::result::Result::{Err, Ok};
@@ -17,7 +18,7 @@ use std::str::FromStr;
 
 use self::cfd_sys::{
   CfdFreeDescriptorHandle, CfdGetDescriptorChecksum, CfdGetDescriptorData,
-  CfdGetDescriptorMultisigKey, CfdParseDescriptor,
+  CfdGetDescriptorMultisigKey, CfdGetDescriptorRootData, CfdParseDescriptor,
 };
 
 /// The script type on descriptor.
@@ -45,6 +46,10 @@ pub enum DescriptorScriptType {
   Addr,
   /// ScriptType: raw
   Raw,
+  /// ScriptType: miniscript (internal)
+  MiniScript,
+  /// ScriptType: taproot
+  Taproot,
 }
 
 impl DescriptorScriptType {
@@ -60,6 +65,8 @@ impl DescriptorScriptType {
       8 => DescriptorScriptType::SortedMulti,
       9 => DescriptorScriptType::Addr,
       10 => DescriptorScriptType::Raw,
+      11 => DescriptorScriptType::MiniScript,
+      12 => DescriptorScriptType::Taproot,
       _ => DescriptorScriptType::Null,
     }
   }
@@ -79,6 +86,8 @@ impl fmt::Display for DescriptorScriptType {
       DescriptorScriptType::SortedMulti => write!(f, "type:sorted-multi"),
       DescriptorScriptType::Addr => write!(f, "type:address"),
       DescriptorScriptType::Raw => write!(f, "type:raw"),
+      DescriptorScriptType::MiniScript => write!(f, "type:miniscript"),
+      DescriptorScriptType::Taproot => write!(f, "type:taproot"),
     }
   }
 }
@@ -94,6 +103,8 @@ pub enum DescriptorKeyType {
   Bip32,
   /// key type: bip32 ext privkey
   Bip32Priv,
+  /// key type: schnorr pubkey
+  Schnorr,
 }
 
 impl DescriptorKeyType {
@@ -102,6 +113,7 @@ impl DescriptorKeyType {
       1 => DescriptorKeyType::Public,
       2 => DescriptorKeyType::Bip32,
       3 => DescriptorKeyType::Bip32Priv,
+      4 => DescriptorKeyType::Schnorr,
       _ => DescriptorKeyType::Null,
     }
   }
@@ -114,6 +126,7 @@ impl fmt::Display for DescriptorKeyType {
       DescriptorKeyType::Public => write!(f, "keyType:public"),
       DescriptorKeyType::Bip32 => write!(f, "keyType:bip32"),
       DescriptorKeyType::Bip32Priv => write!(f, "keyType:bip32-priv"),
+      DescriptorKeyType::Schnorr => write!(f, "keyType:schnorr"),
     }
   }
 }
@@ -125,6 +138,7 @@ pub struct KeyData {
   pubkey: Pubkey,
   ext_pubkey: ExtPubkey,
   ext_privkey: ExtPrivkey,
+  schnorr_pubkey: SchnorrPubkey,
 }
 
 impl KeyData {
@@ -135,6 +149,7 @@ impl KeyData {
         pubkey: pubkey.clone(),
         ext_pubkey: ExtPubkey::default(),
         ext_privkey: ExtPrivkey::default(),
+        schnorr_pubkey: SchnorrPubkey::default(),
       }
     } else {
       KeyData::default()
@@ -148,6 +163,7 @@ impl KeyData {
         pubkey: Pubkey::default(),
         ext_pubkey: ext_pubkey.clone(),
         ext_privkey: ExtPrivkey::default(),
+        schnorr_pubkey: SchnorrPubkey::default(),
       }
     } else {
       KeyData::default()
@@ -161,6 +177,20 @@ impl KeyData {
         pubkey: Pubkey::default(),
         ext_pubkey: ExtPubkey::default(),
         ext_privkey: ext_privkey.clone(),
+        schnorr_pubkey: SchnorrPubkey::default(),
+      },
+      _ => KeyData::default(),
+    }
+  }
+
+  pub fn from_schnorr_pubkey(schnorr_pubkey: &SchnorrPubkey) -> KeyData {
+    match schnorr_pubkey.valid() {
+      true => KeyData {
+        key_type: DescriptorKeyType::Schnorr,
+        pubkey: Pubkey::default(),
+        ext_pubkey: ExtPubkey::default(),
+        ext_privkey: ExtPrivkey::default(),
+        schnorr_pubkey: schnorr_pubkey.clone(),
       },
       _ => KeyData::default(),
     }
@@ -171,6 +201,7 @@ impl KeyData {
       DescriptorKeyType::Public => self.pubkey.to_hex(),
       DescriptorKeyType::Bip32 => self.ext_pubkey.to_str().to_string(),
       DescriptorKeyType::Bip32Priv => self.ext_privkey.to_str().to_string(),
+      DescriptorKeyType::Schnorr => self.schnorr_pubkey.to_hex(),
       _ => String::default(),
     }
   }
@@ -190,6 +221,10 @@ impl KeyData {
   pub fn get_ext_privkey(&self) -> &ExtPrivkey {
     &self.ext_privkey
   }
+
+  pub fn get_schnorr_pubkey(&self) -> &SchnorrPubkey {
+    &self.schnorr_pubkey
+  }
 }
 
 impl fmt::Display for KeyData {
@@ -205,6 +240,7 @@ impl Default for KeyData {
       pubkey: Pubkey::default(),
       ext_pubkey: ExtPubkey::default(),
       ext_privkey: ExtPrivkey::default(),
+      schnorr_pubkey: SchnorrPubkey::default(),
     }
   }
 }
@@ -220,6 +256,7 @@ pub struct DescriptorScriptData {
   key_data: KeyData,
   multisig_key_list: Vec<KeyData>,
   multisig_require_num: u8,
+  script_tree: TapBranch,
 }
 
 impl DescriptorScriptData {
@@ -291,8 +328,7 @@ impl DescriptorScriptData {
       address,
       redeem_script,
       key_data,
-      multisig_key_list: vec![],
-      multisig_require_num: 0,
+      ..DescriptorScriptData::default()
     }
   }
 
@@ -311,9 +347,26 @@ impl DescriptorScriptData {
       hash_type,
       address,
       redeem_script,
-      key_data: KeyData::default(),
       multisig_key_list: multisig_key_list.to_vec(),
       multisig_require_num,
+      ..DescriptorScriptData::default()
+    }
+  }
+
+  pub fn by_taproot(
+    script_type: DescriptorScriptType,
+    hash_type: HashType,
+    address: Address,
+    key_data: KeyData,
+    script_tree: TapBranch,
+  ) -> DescriptorScriptData {
+    DescriptorScriptData {
+      script_type,
+      hash_type,
+      address,
+      key_data,
+      script_tree,
+      ..DescriptorScriptData::default()
     }
   }
 
@@ -347,6 +400,10 @@ impl DescriptorScriptData {
   pub fn get_multisig_require_num(&self) -> u8 {
     self.multisig_require_num
   }
+
+  pub fn get_script_tree(&self) -> &TapBranch {
+    &self.script_tree
+  }
 }
 
 impl fmt::Display for DescriptorScriptData {
@@ -366,6 +423,7 @@ impl Default for DescriptorScriptData {
       key_data: KeyData::default(),
       multisig_key_list: vec![],
       multisig_require_num: 0,
+      script_tree: TapBranch::default(),
     }
   }
 }
@@ -680,7 +738,105 @@ impl Descriptor {
             Err(CfdError::Unknown("Failed to parse_descriptor.".to_string()));
           let mut list: Vec<DescriptorScriptData> = vec![];
           list.reserve(max_num as usize);
+          let mut key_list_obj: Vec<KeyData> = vec![];
           let mut index = 0;
+          let root_data = {
+            let mut script_type: c_int = 0;
+            let mut key_type: c_int = 0;
+            let mut hash_type: c_int = 0;
+            let mut locking_script: *mut c_char = ptr::null_mut();
+            let mut address: *mut c_char = ptr::null_mut();
+            let mut pubkey: *mut c_char = ptr::null_mut();
+            let mut redeem_script: *mut c_char = ptr::null_mut();
+            let mut ext_pubkey: *mut c_char = ptr::null_mut();
+            let mut ext_privkey: *mut c_char = ptr::null_mut();
+            let mut schnorr_pubkey: *mut c_char = ptr::null_mut();
+            let mut tree_string: *mut c_char = ptr::null_mut();
+            let mut is_multisig: bool = false;
+            let mut max_key_num: c_uint = 0;
+            let mut req_sig_num: c_uint = 0;
+            let error_code = unsafe {
+              CfdGetDescriptorRootData(
+                handle.as_handle(),
+                descriptor_handle,
+                &mut script_type,
+                &mut locking_script,
+                &mut address,
+                &mut hash_type,
+                &mut redeem_script,
+                &mut key_type,
+                &mut pubkey,
+                &mut ext_pubkey,
+                &mut ext_privkey,
+                &mut schnorr_pubkey,
+                &mut tree_string,
+                &mut is_multisig,
+                &mut max_key_num,
+                &mut req_sig_num,
+              )
+            };
+            if error_code != 0 {
+              Err(handle.get_error(error_code))
+            } else {
+              let str_list = unsafe {
+                collect_multi_cstring_and_free(&[
+                  locking_script,
+                  address,
+                  pubkey,
+                  redeem_script,
+                  ext_pubkey,
+                  ext_privkey,
+                  schnorr_pubkey,
+                  tree_string,
+                ])
+              }?;
+              let addr_str = &str_list[1];
+              let pubkey_obj = &str_list[2];
+              let script_str = &str_list[3];
+              let ext_pubkey_obj = &str_list[4];
+              let ext_privkey_obj = &str_list[5];
+              let schnorr_pubkey_obj = &str_list[6];
+              let tree_string_obj = &str_list[7];
+              let addr = match addr_str.is_empty() {
+                false => Address::from_string(&addr_str)?,
+                _ => Address::default(),
+              };
+              let script = match script_str.is_empty() {
+                false => Script::from_hex(&script_str)?,
+                _ => Script::default(),
+              };
+              let script_tree = match tree_string_obj.is_empty() {
+                false => TapBranch::from_string(&tree_string_obj)?,
+                _ => TapBranch::default(),
+              };
+              if is_multisig {
+                key_list_obj =
+                  Descriptor::collect_multisig_data(&handle, descriptor_handle, max_key_num)?;
+              }
+              let key_type_obj = DescriptorKeyType::from_c_value(key_type);
+              let key_data = match key_type_obj {
+                DescriptorKeyType::Null => KeyData::default(),
+                _ => Descriptor::collect_key_data(
+                  key_type,
+                  &pubkey_obj,
+                  &ext_pubkey_obj,
+                  &ext_privkey_obj,
+                  &schnorr_pubkey_obj,
+                )?,
+              };
+              Ok(DescriptorScriptData {
+                script_type: DescriptorScriptType::from_c_value(script_type),
+                depth: 0,
+                hash_type: HashType::from_c_value(hash_type),
+                address: addr,
+                redeem_script: script,
+                key_data,
+                multisig_key_list: key_list_obj.clone(),
+                multisig_require_num: req_sig_num as u8,
+                script_tree,
+              })
+            }
+          }?;
 
           while index <= max_num {
             let mut max_index: c_uint = 0;
@@ -755,6 +911,7 @@ impl Descriptor {
                   &pubkey_obj,
                   &ext_pubkey_obj,
                   &ext_privkey_obj,
+                  "",
                 )?;
                 Ok(DescriptorScriptData::from_pubkey(
                   type_obj,
@@ -769,8 +926,10 @@ impl Descriptor {
               | DescriptorScriptType::Multi
               | DescriptorScriptType::SortedMulti => {
                 if is_multisig {
-                  let key_list_obj =
-                    Descriptor::collect_multisig_data(&handle, descriptor_handle, max_key_num)?;
+                  if key_list_obj.is_empty() {
+                    key_list_obj =
+                      Descriptor::collect_multisig_data(&handle, descriptor_handle, max_key_num)?;
+                  }
                   Ok(DescriptorScriptData::from_multisig(
                     type_obj,
                     depth,
@@ -815,6 +974,7 @@ impl Descriptor {
                     &pubkey_obj,
                     &ext_pubkey_obj,
                     &ext_privkey_obj,
+                    "",
                   )?;
                   Ok(DescriptorScriptData::from_pubkey(
                     type_obj,
@@ -832,7 +992,11 @@ impl Descriptor {
             index += 1;
           }
           if list.len() == ((max_num + 1) as usize) {
-            result = Ok(Descriptor::analyze_list(descriptor, &list));
+            result = Ok(Descriptor {
+              descriptor: descriptor.to_string(),
+              script_list: list,
+              root_data,
+            });
           }
           result
         };
@@ -865,6 +1029,10 @@ impl Descriptor {
 
   pub fn get_address(&self) -> &Address {
     &self.root_data.address
+  }
+
+  pub fn get_script_tree(&self) -> &TapBranch {
+    &self.root_data.script_tree
   }
 
   /// Exist script-hash.
@@ -933,6 +1101,10 @@ impl Descriptor {
     }
   }
 
+  pub fn has_taproot(&self) -> bool {
+    self.root_data.script_type == DescriptorScriptType::Taproot
+  }
+
   pub fn get_key_data(&self) -> Result<&KeyData, CfdError> {
     match self.root_data.key_data.key_type {
       DescriptorKeyType::Null => Err(CfdError::IllegalState("Not exist key data.".to_string())),
@@ -996,6 +1168,7 @@ impl Descriptor {
     pubkey: &str,
     ext_pubkey: &str,
     ext_privkey: &str,
+    schnorr_pubkey: &str,
   ) -> Result<KeyData, CfdError> {
     let key_type_obj = DescriptorKeyType::from_c_value(key_type);
     match key_type_obj {
@@ -1010,6 +1183,13 @@ impl Descriptor {
       DescriptorKeyType::Bip32Priv => {
         let ext_key_obj = ExtPrivkey::from_str(ext_privkey)?;
         Ok(KeyData::from_ext_privkey(&ext_key_obj))
+      }
+      DescriptorKeyType::Schnorr => {
+        let key_obj = match schnorr_pubkey.is_empty() {
+          true => SchnorrPubkey::from_str(pubkey)?,
+          _ => SchnorrPubkey::from_str(schnorr_pubkey)?,
+        };
+        Ok(KeyData::from_schnorr_pubkey(&key_obj))
       }
       _ => Err(CfdError::Internal("invalid key type status.".to_string())),
     }
@@ -1053,7 +1233,7 @@ impl Descriptor {
           let pubkey_obj = &str_list[0];
           let ext_pubkey_obj = &str_list[1];
           let ext_privkey_obj = &str_list[2];
-          Descriptor::collect_key_data(key_type, pubkey_obj, ext_pubkey_obj, ext_privkey_obj)
+          Descriptor::collect_key_data(key_type, pubkey_obj, ext_pubkey_obj, ext_privkey_obj, "")
         }
       }?;
       list.push(key_data);
@@ -1063,85 +1243,6 @@ impl Descriptor {
       result = Ok(list);
     }
     result
-  }
-
-  fn analyze_list(descriptor: &str, script_list: &[DescriptorScriptData]) -> Descriptor {
-    let mut desc = Descriptor {
-      descriptor: descriptor.to_string(),
-      script_list: script_list.to_vec(),
-      root_data: DescriptorScriptData::default(),
-    };
-    let first = &script_list[0];
-    match first.hash_type {
-      HashType::P2sh | HashType::P2wsh => {
-        if (script_list.len() > 1) && (script_list[1].hash_type == HashType::P2pkh) {
-          desc.root_data = DescriptorScriptData::from_key_and_script(
-            first.script_type,
-            first.depth,
-            first.hash_type,
-            first.address.clone(),
-            first.redeem_script.clone(),
-            script_list[1].key_data.clone(),
-          );
-          return desc;
-        }
-      }
-      HashType::P2shP2wsh => {
-        if (script_list.len() > 2) && (script_list[2].hash_type == HashType::P2pkh) {
-          desc.root_data = DescriptorScriptData::from_key_and_script(
-            first.script_type,
-            first.depth,
-            first.hash_type,
-            first.address.clone(),
-            script_list[1].redeem_script.clone(),
-            script_list[2].key_data.clone(),
-          );
-          return desc;
-        }
-      }
-      _ => {}
-    }
-
-    if script_list.len() == 1 {
-      desc.root_data = first.clone();
-      return desc;
-    }
-
-    let second = &script_list[1];
-    match first.hash_type {
-      HashType::P2shP2wsh => {
-        if second.multisig_require_num > 0 {
-          desc.root_data = DescriptorScriptData::from_multisig(
-            first.script_type,
-            first.depth,
-            first.hash_type,
-            first.address.clone(),
-            second.redeem_script.clone(),
-            &second.multisig_key_list.clone().to_vec(),
-            second.multisig_require_num,
-          );
-        } else {
-          desc.root_data = DescriptorScriptData::from_script(
-            first.script_type,
-            first.depth,
-            first.hash_type,
-            first.address.clone(),
-            second.redeem_script.clone(),
-          );
-        }
-      }
-      HashType::P2shP2wpkh => {
-        desc.root_data = DescriptorScriptData::from_pubkey(
-          first.script_type,
-          first.depth,
-          first.hash_type,
-          first.address.clone(),
-          second.key_data.clone(),
-        );
-      }
-      _ => desc.root_data = first.clone(),
-    }
-    desc
   }
 }
 

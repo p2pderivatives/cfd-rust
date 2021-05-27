@@ -77,14 +77,13 @@ jobs:
     - name: cmake-build
       run: |
         cd cfd-sys/cfd-cmake
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=${{ matrix.shared }} -DENABLE_CAPI=on -DENABLE_TESTS=off -DENABLE_JS_WRAPPER=off
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=${{ matrix.shared }} -DENABLE_CAPI=on -DENABLE_TESTS=off -DENABLE_JS_WRAPPER=off -DCMAKE_INSTALL_PREFIX="./dist"
         cmake --build build --parallel 2 --config Release
         cd ../..
       timeout-minutes: 20
     - name: cmake-install
       run: |
         cd cfd-sys/cfd-cmake
-        cmake -DCMAKE_INSTALL_PREFIX="./dist" --install build
         cmake --install build
         cd dist
         del /F /Q cmake\wallycore-*

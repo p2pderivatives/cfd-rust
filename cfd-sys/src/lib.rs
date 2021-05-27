@@ -113,6 +113,17 @@ fns! {
     confidential_key: *mut *mut c_char,
     network_type: *mut c_int,
   ) -> c_int;
+  pub fn CfdGetPeginAddress(
+    handle: *const c_void,
+    mainchain_network_type: c_int,
+    fedpeg_script: *const c_char,
+    hash_type: c_int,
+    pubkey: *const c_char,
+    redeem_script: *const c_char,
+    pegin_address: *mut *mut c_char,
+    claim_script: *mut *mut c_char,
+    tweaked_fedpeg_script: *mut *mut c_char,
+  ) -> c_int;
   pub fn CfdParseDescriptor(
     handle: *const c_void,
     descriptor: *const i8,
@@ -120,6 +131,24 @@ fns! {
     bip32_derivation_path: *const i8,
     descriptor_handle: *mut *mut c_void,
     max_index: *mut c_uint,
+  ) -> c_int;
+  pub fn CfdGetDescriptorRootData(
+    handle: *const c_void,
+    descriptor_handle: *const c_void,
+    script_type: *mut c_int,
+    locking_script: *mut *mut c_char,
+    address: *mut *mut c_char,
+    hash_type: *mut c_int,
+    redeem_script: *mut *mut c_char,
+    key_type: *mut c_int,
+    pubkey: *mut *mut c_char,
+    ext_pubkey: *mut *mut c_char,
+    ext_privkey: *mut *mut c_char,
+    schnorr_pubkey: *mut *mut c_char,
+    tree_string: *mut *mut c_char,
+    is_multisig: *mut bool,
+    max_key_num: *mut c_uint,
+    req_sig_num: *mut c_uint,
   ) -> c_int;
   pub fn CfdGetDescriptorData(
     handle: *const c_void,
@@ -696,6 +725,21 @@ fns! {
     direct_locking_script: *const i8,
     asset_string: *const i8,
   ) -> c_int;
+  pub fn CfdSplitTxOut(
+    handle: *const c_void,
+    create_handle: *const c_void,
+    split_output_handle: *const c_void,
+    txout_index: c_uint,
+  ) -> c_int;
+  pub fn CfdUpdateWitnessStack(
+    handle: *const c_void,
+    create_handle: *const c_void,
+    stack_type: c_int,
+    txid: *const i8,
+    vout: c_uint,
+    stack_index: c_uint,
+    stack_item: *const i8,
+  ) -> c_int;
   pub fn CfdClearWitnessStack(
     handle: *const c_void,
     create_handle: *const c_void,
@@ -802,6 +846,23 @@ fns! {
     tx_hex: *mut *mut c_char,
   ) -> c_int;
   pub fn CfdFreeTransactionHandle(handle: *const c_void, create_handle: *const c_void) -> c_int;
+  pub fn CfdCreateSplitTxOutHandle(
+    handle: *const c_void,
+    create_handle: *const c_void,
+    split_output_handle: *mut *mut c_void,
+  ) -> c_int;
+  pub fn CfdAddSplitTxOutData(
+    handle: *const c_void,
+    split_output_handle: *const c_void,
+    amount: c_longlong,
+    address: *const i8,
+    direct_locking_script: *const i8,
+    direct_nonce: *const i8,
+  ) -> c_int;
+  pub fn CfdFreeSplitTxOutHandle(
+    handle: *const c_void,
+    split_output_handle: *const c_void,
+  ) -> c_int;
   pub fn CfdUpdateTxOutAmount(
     handle: *const c_void,
     network_type: c_int,
@@ -1244,6 +1305,9 @@ fns! {
   pub fn CfdGetTxOutIndexByHandle(
       handle: *const c_void, tx_data_handle: *const c_void, address: *const c_char,
       direct_locking_script: *const c_char, index: *mut c_uint) -> c_int;
+  pub fn CfdGetTxOutIndexWithOffsetByHandle(
+      handle: *const c_void, tx_data_handle: *const c_void, offset: c_uint, address: *const c_char,
+      direct_locking_script: *const c_char, index: *mut c_uint) -> c_int;
   pub fn CfdInitializeConfidentialTx(
       handle: *const c_void, version: c_uint, locktime: c_uint, tx_string: *mut *mut c_char) -> c_int;
   pub fn CfdAddConfidentialTxOut(
@@ -1347,6 +1411,31 @@ fns! {
       handle: *const c_void, create_handle: *const c_void, value_satoshi: c_longlong,
       address: *const c_char, direct_locking_script: *const c_char,
       asset_string: *const c_char, nonce: *const c_char) -> c_int;
+  pub fn CfdSetIssueAsset(
+      handle: *const c_void, create_handle: *const c_void, txid: *const c_char,
+      vout: c_uint, contract_hash: *const c_char, asset_amount: c_longlong,
+      asset_address: *const c_char, asset_locking_script: *const c_char,
+      token_amount: c_longlong, token_address: *const c_char, token_locking_script: *const c_char,
+      is_blind_asset: bool, entropy: *mut *mut c_char, asset_string: *mut *mut c_char,
+      token_string: *mut *mut c_char) -> c_int;
+  pub fn CfdSetReissueAsset(
+      handle: *const c_void, create_handle: *const c_void, txid: *const c_char,
+      vout: c_uint, asset_amount: c_longlong, blinding_nonce: *const c_char,
+      entropy: *const c_char, address: *const c_char, direct_locking_script: *const c_char,
+      asset_string: *mut *mut c_char) -> c_int;
+  pub fn CfdAddTxPeginInput(
+      handle: *const c_void, create_handle: *const c_void, txid: *const c_char,
+      vout: c_uint, amount: c_longlong, asset: *const c_char,
+      mainchain_genesis_block_hash: *const c_char, claim_script: *const c_char,
+      mainchain_tx_hex: *const c_char, txout_proof: *const c_char) -> c_int;
+  pub fn CfdAddTxPegoutOutput(
+      handle: *const c_void, create_handle: *const c_void, asset: *const c_char,
+      amount: c_longlong, mainchain_network_type: c_int,
+      elements_network_type: c_int,
+      mainchain_genesis_block_hash: *const c_char, online_pubkey: *const c_char,
+      master_online_key: *const c_char, mainchain_output_descriptor: *const c_char,
+      bip32_counter: c_uint, whitelist: *const c_char,
+      mainchain_address: *mut *mut c_char) -> c_int;
   pub fn CfdCreatePsbtHandle(
     handle: *const c_void, net_type: c_int, psbt_string: *const c_char,
     tx_hex_string: *const c_char, version: c_uint, locktime: c_uint,
