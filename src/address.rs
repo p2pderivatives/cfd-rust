@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 use self::cfd_sys::{
   CfdCreateAddress, CfdFreeAddressesMultisigHandle, CfdGetAddressFromLockingScript,
-  CfdGetAddressFromMultisigKey, CfdGetAddressInfo, CfdGetAddressesFromMultisig,
+  CfdGetAddressFromMultisigKey, CfdGetAddressInfo, CfdGetAddressesFromMultisig, CfdGetPeginAddress,
 };
 
 /// Hash type of locking script.
@@ -281,6 +281,14 @@ impl fmt::Display for WitnessVersion {
       WitnessVersion::Version16 => write!(f, "Segwit:v16"),
     }
   }
+}
+
+/// A container that stores a pegin data.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct PeginData {
+  pub address: Address,
+  pub claim_script: Script,
+  pub tweaked_fedpeg_script: Script,
 }
 
 /// A container that stores a bitcoin address.
@@ -625,6 +633,87 @@ impl Address {
     )
   }
 
+  /// Create pegin address by pubkey.
+  ///
+  /// # Arguments
+  /// * `fedpeg_script` - A fedpeg script.
+  /// * `pubkey` - A pubkey.
+  /// * `hash_type` - A hash type.
+  /// * `network_type` - A target mainchain network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, HashType, Network, Pubkey, Script};
+  /// use std::str::FromStr;
+  /// let fedpeg_script = Script::from_hex("522103aab896d53a8e7d6433137bbba940f9c521e085dd07e60994579b64a6d992cf79210291b7d0b1b692f8f524516ed950872e5da10fb1b808b5a526dedc6fed1cf29807210386aa9372fbab374593466bc5451dc59954e90787f08060964d95c87ef34ca5bb53ae").expect("Fail");
+  /// let pubkey = Pubkey::from_str("02522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0").expect("Fail");
+  /// let pegin_data = Address::pegin_by_pubkey(
+  ///   &fedpeg_script, &pubkey, &HashType::P2wsh, &Network::Regtest).expect("Fail");
+  /// ```
+  pub fn pegin_by_pubkey(
+    fedpeg_script: &Script,
+    pubkey: &Pubkey,
+    hash_type: &HashType,
+    network_type: &Network,
+  ) -> Result<PeginData, CfdError> {
+    let (addr, claim_script, tweaked_fedpeg) = Address::get_pegin_address(
+      fedpeg_script,
+      pubkey,
+      ptr::null(),
+      hash_type.to_c_value(),
+      network_type.to_c_value(),
+    )?;
+    Ok(PeginData {
+      address: addr,
+      claim_script,
+      tweaked_fedpeg_script: tweaked_fedpeg,
+    })
+  }
+
+  /// Create pegin address by script.
+  ///
+  /// # Arguments
+  /// * `fedpeg_script` - A fedpeg script.
+  /// * `redeem_script` - A redeem script.
+  /// * `hash_type` - A hash type.
+  /// * `network_type` - A target mainchain network.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, HashType, Network, Script};
+  /// use std::str::FromStr;
+  /// let fedpeg_script = Script::from_hex("522103aab896d53a8e7d6433137bbba940f9c521e085dd07e60994579b64a6d992cf79210291b7d0b1b692f8f524516ed950872e5da10fb1b808b5a526dedc6fed1cf29807210386aa9372fbab374593466bc5451dc59954e90787f08060964d95c87ef34ca5bb53ae").expect("Fail");
+  /// let redeem_script = Script::from_hex("522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae").expect("Fail");
+  /// let pegin_data = Address::pegin_by_script(
+  ///   &fedpeg_script, &redeem_script, &HashType::P2wsh, &Network::Regtest).expect("Fail");
+  /// ```
+  pub fn pegin_by_script(
+    fedpeg_script: &Script,
+    redeem_script: &Script,
+    hash_type: &HashType,
+    network_type: &Network,
+  ) -> Result<PeginData, CfdError> {
+    let (addr, claim_script, tweaked_fedpeg) = Address::get_pegin_address(
+      fedpeg_script,
+      ptr::null(),
+      redeem_script,
+      hash_type.to_c_value(),
+      network_type.to_c_value(),
+    )?;
+    Ok(PeginData {
+      address: addr,
+      claim_script,
+      tweaked_fedpeg_script: tweaked_fedpeg,
+    })
+  }
+
+  #[inline]
+  pub fn is_valid(&self) -> bool {
+    !self.address.is_empty()
+  }
+
   #[inline]
   pub fn to_str(&self) -> &str {
     &self.address
@@ -883,6 +972,63 @@ impl Address {
           witness_version: hash_type_obj.get_witness_version(),
           hash: hash_obj,
         })
+      }
+      _ => Err(handle.get_error(error_code)),
+    };
+    handle.free_handle();
+    result
+  }
+
+  fn get_pegin_address(
+    fedpeg_script: &Script,
+    pubkey: *const Pubkey,
+    script: *const Script,
+    hash_type: c_int,
+    network_type: c_int,
+  ) -> Result<(Address, Script, Script), CfdError> {
+    let pubkey_hex = unsafe {
+      match pubkey.as_ref() {
+        Some(pubkey) => alloc_c_string(&pubkey.to_hex()),
+        _ => alloc_c_string(""),
+      }
+    }?;
+    let redeem_script = unsafe {
+      match script.as_ref() {
+        Some(script) => alloc_c_string(&script.to_hex()),
+        _ => alloc_c_string(""),
+      }
+    }?;
+    let fedpeg_script_hex = alloc_c_string(&fedpeg_script.to_hex())?;
+    let mut handle = ErrorHandle::new()?;
+    let mut address: *mut c_char = ptr::null_mut();
+    let mut claim_script: *mut c_char = ptr::null_mut();
+    let mut tweaked_fedpeg_script: *mut c_char = ptr::null_mut();
+    let error_code = unsafe {
+      CfdGetPeginAddress(
+        handle.as_handle(),
+        network_type,
+        fedpeg_script_hex.as_ptr(),
+        hash_type,
+        pubkey_hex.as_ptr(),
+        redeem_script.as_ptr(),
+        &mut address,
+        &mut claim_script,
+        &mut tweaked_fedpeg_script,
+      )
+    };
+    let result = match error_code {
+      0 => {
+        let str_list = unsafe {
+          collect_multi_cstring_and_free(&[address, claim_script, tweaked_fedpeg_script])
+        }?;
+        let addr_str = &str_list[0];
+        let claim_script_obj = &str_list[1];
+        let fedpeg_script_obj = &str_list[2];
+        Ok((
+          Address::from_string(&addr_str)?,
+          Script::from_hex(&claim_script_obj)?,
+          Script::from_hex(&fedpeg_script_obj)?,
+        ))
       }
       _ => Err(handle.get_error(error_code)),
     };

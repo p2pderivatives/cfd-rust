@@ -8,9 +8,10 @@ use crate::common::{
   ErrorHandle, Network, ReverseContainer,
 };
 use crate::transaction::{
-  set_fund_tx_option, FeeData, FeeOption, FundOptionValue, FundTargetOption, FundTransactionData,
-  HashTypeData, OutPoint, ScriptWitness, SigHashOption, TransactionOperation, TxData, TxDataHandle,
-  TxInData, Txid, UtxoData, SEQUENCE_LOCK_TIME_FINAL,
+  set_fund_tx_option, BlockHash, CreateTxData, FeeData, FeeOption, FundOptionValue,
+  FundTargetOption, FundTransactionData, HashTypeData, OutPoint, ScriptWitness, SigHashOption,
+  Transaction, TransactionOperation, TxData, TxDataHandle, TxInData, Txid, UtxoData,
+  SEQUENCE_LOCK_TIME_FINAL,
 };
 use crate::{
   address::{Address, HashType},
@@ -30,17 +31,18 @@ use self::cfd_sys::{
   CfdAddCoinSelectionUtxoTemplate, CfdAddConfidentialTxOutput,
   CfdAddConfidentialTxSignWithPrivkeySimple, CfdAddTargetAmountForFundRawTx,
   CfdAddTransactionInput, CfdAddTxInTemplateForEstimateFee, CfdAddTxInTemplateForFundRawTx,
-  CfdAddUtxoTemplateForFundRawTx, CfdCreateConfidentialSighash, CfdFinalizeBlindTx,
-  CfdFinalizeCoinSelection, CfdFinalizeEstimateFee, CfdFinalizeFundRawTx, CfdFinalizeTransaction,
-  CfdFreeBlindHandle, CfdFreeCoinSelectionHandle, CfdFreeEstimateFeeHandle, CfdFreeFundRawTxHandle,
+  CfdAddTxPeginInput, CfdAddTxPegoutOutput, CfdAddUtxoTemplateForFundRawTx,
+  CfdCreateConfidentialSighash, CfdFinalizeBlindTx, CfdFinalizeCoinSelection,
+  CfdFinalizeEstimateFee, CfdFinalizeFundRawTx, CfdFinalizeTransaction, CfdFreeBlindHandle,
+  CfdFreeCoinSelectionHandle, CfdFreeEstimateFeeHandle, CfdFreeFundRawTxHandle,
   CfdFreeTransactionHandle, CfdGetAppendTxOutFundRawTx, CfdGetAssetCommitment,
   CfdGetBlindTxBlindData, CfdGetConfidentialTxInfoByHandle, CfdGetConfidentialTxOutSimpleByHandle,
   CfdGetConfidentialValueHex, CfdGetDefaultBlindingKey, CfdGetIssuanceBlindingKey,
   CfdGetSelectedCoinIndex, CfdGetTxInByHandle, CfdGetTxInIndexByHandle,
   CfdGetTxInIssuanceInfoByHandle, CfdGetTxOutIndex, CfdGetValueCommitment, CfdInitializeBlindTx,
   CfdInitializeCoinSelection, CfdInitializeEstimateFee, CfdInitializeFundRawTx,
-  CfdInitializeTransaction, CfdSetBlindTxOption, CfdSetOptionCoinSelection,
-  CfdSetOptionEstimateFee, CfdSetRawReissueAsset, CfdUnblindIssuance, CfdUnblindTxOut,
+  CfdInitializeTransaction, CfdSetBlindTxOption, CfdSetIssueAsset, CfdSetOptionCoinSelection,
+  CfdSetOptionEstimateFee, CfdSetReissueAsset, CfdUnblindIssuance, CfdUnblindTxOut,
   CfdUpdateTxOutAmount, BLIND_OPT_COLLECT_BLINDER, BLIND_OPT_EXPONENT, BLIND_OPT_MINIMUM_BITS,
   BLIND_OPT_MINIMUM_RANGE_VALUE, COIN_OPT_BLIND_EXPONENT, COIN_OPT_BLIND_MINIMUM_BITS,
   DEFAULT_BLIND_MINIMUM_BITS, FEE_OPT_BLIND_EXPONENT, FEE_OPT_BLIND_MINIMUM_BITS,
@@ -1301,6 +1303,99 @@ impl Default for ConfidentialTxOutData {
   }
 }
 
+/// A container that stores an issuance input data.
+#[derive(PartialEq, Eq, Clone)]
+pub struct IssuanceInputData {
+  pub contract_hash: ByteData,
+  pub asset_amount: i64,
+  pub asset_address: InputAddress,
+  pub asset_locking_script: Script,
+  pub token_amount: i64,
+  pub token_address: InputAddress,
+  pub token_locking_script: Script,
+  pub has_blind: bool,
+}
+
+impl Default for IssuanceInputData {
+  fn default() -> IssuanceInputData {
+    IssuanceInputData {
+      contract_hash: ByteData::default(),
+      asset_amount: 0,
+      asset_address: InputAddress::Addr(Address::default()),
+      asset_locking_script: Script::default(),
+      token_amount: 0,
+      token_address: InputAddress::Addr(Address::default()),
+      token_locking_script: Script::default(),
+      has_blind: false,
+    }
+  }
+}
+
+/// A container that stores a reissuance input data.
+#[derive(PartialEq, Eq, Clone)]
+pub struct ReissuanceInputData {
+  pub blinding_nonce: BlindFactor,
+  pub entropy: BlindFactor,
+  pub asset_amount: i64,
+  pub asset_address: InputAddress,
+  pub asset_locking_script: Script,
+}
+
+impl Default for ReissuanceInputData {
+  fn default() -> ReissuanceInputData {
+    ReissuanceInputData {
+      blinding_nonce: BlindFactor::default(),
+      entropy: BlindFactor::default(),
+      asset_amount: 0,
+      asset_address: InputAddress::Addr(Address::default()),
+      asset_locking_script: Script::default(),
+    }
+  }
+}
+
+/// A container that stores a issuance output data.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct IssuanceOutputData {
+  pub entropy: BlindFactor,
+  pub asset: ConfidentialAsset,
+  pub token: ConfidentialAsset,
+}
+
+impl Default for IssuanceOutputData {
+  fn default() -> IssuanceOutputData {
+    IssuanceOutputData {
+      entropy: BlindFactor::default(),
+      asset: ConfidentialAsset::default(),
+      token: ConfidentialAsset::default(),
+    }
+  }
+}
+
+/// A container that stores a pegin input data.
+#[derive(PartialEq, Eq, Clone)]
+pub struct PeginInputData {
+  pub amount: i64,
+  pub asset: ConfidentialAsset,
+  pub mainchain_genesis_block_hash: BlockHash,
+  pub claim_script: Script,
+  pub transaction: Transaction,
+  pub txout_proof: ByteData,
+}
+
+/// A container that stores a pegout input data.
+#[derive(PartialEq, Eq, Clone)]
+pub struct PegoutInputData {
+  pub amount: i64,
+  pub asset: ConfidentialAsset,
+  pub mainchain_network_type: Network,
+  pub elements_network_type: Network,
+  pub mainchain_genesis_block_hash: BlockHash,
+  pub online_privkey: Privkey,
+  pub offline_output_descriptor: String,
+  pub bip32_counter: u32,
+  pub whitelist: ByteData,
+}
+
 /// A container that stores ConfidentialTransaction data.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConfidentialTxData {
@@ -1724,6 +1819,55 @@ impl ConfidentialTransaction {
     })
   }
 
+  /// Update witness stack.
+  ///
+  /// # Arguments
+  /// * `outpoint` - An outpoint.
+  /// * `stack_index` - A witness stack index.
+  /// * `data` - A witness stack data.
+  pub fn update_witness_stack(
+    &self,
+    outpoint: &OutPoint,
+    stack_index: u32,
+    data: &ByteData,
+  ) -> Result<ConfidentialTransaction, CfdError> {
+    let mut ope = ConfidentialTxOperation::new(&Network::LiquidV1);
+    let tx = ope.update_witness_stack(&hex_from_bytes(&self.tx), outpoint, stack_index, data)?;
+    Ok(ConfidentialTransaction {
+      tx,
+      data: ope.get_last_tx_data().clone(),
+      txin_list: ope.get_txin_list_cache().to_vec(),
+      txout_list: self.txout_list.clone(),
+      // txin_utxo_list: self.txin_utxo_list.clone(),
+    })
+  }
+
+  /// Update pegin witness stack.
+  ///
+  /// # Arguments
+  /// * `outpoint` - An outpoint.
+  /// * `stack_index` - A pegin witness stack index.
+  /// * `data` - A witness stack data.
+  ///
+  /// # Example
+  pub fn update_pegin_witness_stack(
+    &self,
+    outpoint: &OutPoint,
+    stack_index: u32,
+    data: &ByteData,
+  ) -> Result<ConfidentialTransaction, CfdError> {
+    let mut ope = ConfidentialTxOperation::new(&Network::LiquidV1);
+    let tx =
+      ope.update_pegin_witness_stack(&hex_from_bytes(&self.tx), outpoint, stack_index, data)?;
+    Ok(ConfidentialTransaction {
+      tx,
+      data: ope.get_last_tx_data().clone(),
+      txin_list: ope.get_txin_list_cache().to_vec(),
+      txout_list: self.txout_list.clone(),
+      // txin_utxo_list: self.txin_utxo_list.clone(),
+    })
+  }
+
   /// Update amount.
   ///
   /// # Arguments
@@ -1798,6 +1942,50 @@ impl ConfidentialTransaction {
     };
     tx_obj.txout_list[index as usize].value = ConfidentialValue::from_amount(amount)?;
     Ok(tx_obj)
+  }
+
+  /// Split txout.
+  ///
+  /// # Arguments
+  /// * `index` - A txout index.
+  /// * `txout_list` - txout list.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{
+  ///   Address, ConfidentialAsset, OutPoint, ConfidentialTransaction,
+  ///   TxInData, ConfidentialTxOutData,
+  /// };
+  /// use std::str::FromStr;
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// let txin_list = [TxInData::new(&outpoint)];
+  /// let amount: i64 = 50000;
+  /// let addr = Address::from_string("ex1qjex3wgf33j9u0vqk6r4exa9xyr5t3z5c7saq0d").expect("Fail");
+  /// let addr2 = Address::from_string("ex1qyewtv8juq97qyfcd0l3ctwsgsdnpdsgc4zmnkj").expect("Fail");
+  /// let asset = ConfidentialAsset::from_str("0202020202020202020202020202020202020202020202020202020202020202").expect("Fail");
+  /// let txout_list = [ConfidentialTxOutData::from_address(amount, &asset, &addr), ConfidentialTxOutData::from_fee(5000, &asset)];
+  /// let split_txout_list = [ConfidentialTxOutData::from_address(10000, &asset, &addr2)];
+  /// let tx = ConfidentialTransaction::create_tx(2, 0, &txin_list, &txout_list).expect("Fail");
+  /// let tx2 = tx.split_txout(0, &split_txout_list).expect("Fail");
+  /// ```
+  pub fn split_txout(
+    &self,
+    index: u32,
+    txout_list: &[ConfidentialTxOutData],
+  ) -> Result<ConfidentialTransaction, CfdError> {
+    let mut ope = ConfidentialTxOperation::new(&Network::LiquidV1);
+    let tx = ope.split_txout(&hex_from_bytes(&self.tx), index, txout_list)?;
+    let txout_list = ope.get_txout_list_cache();
+    Ok(ConfidentialTransaction {
+      tx,
+      data: ope.get_last_tx_data().clone(),
+      txin_list: self.txin_list.clone(),
+      txout_list: txout_list.to_vec(),
+      // txin_utxo_list: self.txin_utxo_list.clone(),
+    })
   }
 
   /// Blind transaction.
@@ -1949,41 +2137,96 @@ impl ConfidentialTransaction {
     )
   }
 
+  /// Set issuance input and output.
+  ///
+  /// # Arguments
+  /// * `outpoint` - An issuance outpoint.
+  /// * `data` - A issuance input data.
+  /// * `issuance_data` - (out) An issuance output data.
+  pub fn set_issuance(
+    &self,
+    outpoint: &OutPoint,
+    data: &IssuanceInputData,
+    issuance_data: &mut IssuanceOutputData,
+  ) -> Result<ConfidentialTransaction, CfdError> {
+    let mut ope = ConfidentialTxOperation::new(&Network::LiquidV1);
+    let out_data = ope.set_issuance(&hex_from_bytes(&self.tx), outpoint, data)?;
+    *issuance_data = out_data;
+    let tx = ope.get_last_tx();
+    let tx_obj = ConfidentialTransaction {
+      tx: byte_from_hex(tx)?,
+      data: ope.get_last_tx_data().clone(),
+      txin_list: ope.get_txin_list_cache().to_vec(),
+      txout_list: ope.get_txout_list_cache().to_vec(),
+    };
+    Ok(tx_obj)
+  }
+
   /// Set reissuance input and output.
   ///
   /// # Arguments
   /// * `outpoint` - An issuance outpoint.
-  /// * `asset_amount` - A reissuance asset amount.
-  /// * `blinding_nonce` - A token utxo's asset blind factor.
-  /// * `entropy` - A issuance entropy.
-  /// * `send_address` - An append txout address.
+  /// * `data` - A reissuance input data.
   /// * `output_data` - (out) An appended txout data.
   pub fn set_reissuance(
     &self,
     outpoint: &OutPoint,
-    asset_amount: i64,
-    blinding_nonce: &BlindFactor,
-    entropy: &BlindFactor,
-    send_address: &InputAddress,
+    data: &ReissuanceInputData,
     output_data: &mut ConfidentialTxOutData,
   ) -> Result<ConfidentialTransaction, CfdError> {
     let mut ope = ConfidentialTxOperation::new(&Network::LiquidV1);
-    let addr_str = match send_address {
-      InputAddress::Addr(address) => address.to_str().to_string(),
-      InputAddress::CtAddr(address) => address.to_str().to_string(),
-    };
-    let data = ope.set_reissuance(
-      &hex_from_bytes(&self.tx),
-      outpoint,
-      asset_amount,
-      blinding_nonce,
-      entropy,
-      &addr_str,
-    )?;
+    let out_data = ope.set_reissuance(&hex_from_bytes(&self.tx), outpoint, data)?;
+    *output_data = out_data;
     let tx = ope.get_last_tx();
-    let tx_obj = ConfidentialTransaction::from_str(tx)?;
-    *output_data = data;
+    let tx_obj = ConfidentialTransaction {
+      tx: byte_from_hex(tx)?,
+      data: ope.get_last_tx_data().clone(),
+      txin_list: ope.get_txin_list_cache().to_vec(),
+      txout_list: ope.get_txout_list_cache().to_vec(),
+    };
     Ok(tx_obj)
+  }
+
+  /// add pegin input.
+  ///
+  /// # Arguments
+  /// * `outpoint` - An issuance outpoint.
+  /// * `data` - A reissuance input data.
+  /// * `output_data` - (out) An appended txout data.
+  pub fn add_pegin_input(
+    &self,
+    outpoint: &OutPoint,
+    data: &PeginInputData,
+  ) -> Result<ConfidentialTransaction, CfdError> {
+    let mut ope = ConfidentialTxOperation::new(&Network::LiquidV1);
+    ope.add_pegin_input(&hex_from_bytes(&self.tx), outpoint, data)?;
+    Ok(ConfidentialTransaction {
+      tx: byte_from_hex(ope.get_last_tx())?,
+      data: ope.get_last_tx_data().clone(),
+      txin_list: ope.get_txin_list_cache().to_vec(),
+      txout_list: ope.get_txout_list_cache().to_vec(),
+    })
+  }
+
+  /// add pegout output.
+  ///
+  /// # Arguments
+  /// * `data` - A reissuance input data.
+  /// * `output_data` - (out) An appended txout data.
+  pub fn add_pegout_output(
+    &self,
+    data: &PegoutInputData,
+    pegout_address: &mut Address,
+  ) -> Result<ConfidentialTransaction, CfdError> {
+    let mut ope = ConfidentialTxOperation::new(&Network::LiquidV1);
+    let (tx_bytes, addr) = ope.add_pegout_output(&hex_from_bytes(&self.tx), data)?;
+    *pegout_address = addr;
+    Ok(ConfidentialTransaction {
+      tx: tx_bytes,
+      data: ope.get_last_tx_data().clone(),
+      txin_list: ope.get_txin_list_cache().to_vec(),
+      txout_list: ope.get_txout_list_cache().to_vec(),
+    })
   }
 
   pub fn get_txin_index(&self, outpoint: &OutPoint) -> Result<u32, CfdError> {
@@ -2004,6 +2247,16 @@ impl ConfidentialTransaction {
   pub fn get_txout_fee_index(&self) -> Result<u32, CfdError> {
     let ope = TransactionOperation::new(&Network::LiquidV1);
     ope.get_txout_index_by_script(&hex_from_bytes(&self.tx), &Script::default())
+  }
+
+  pub fn get_txout_indexes_by_address(&self, address: &Address) -> Result<Vec<u32>, CfdError> {
+    let ope = TransactionOperation::new(&Network::LiquidV1);
+    ope.get_txout_indexes_by_address(&hex_from_bytes(&self.tx), address)
+  }
+
+  pub fn get_txout_indexes_by_script(&self, script: &Script) -> Result<Vec<u32>, CfdError> {
+    let ope = TransactionOperation::new(&Network::LiquidV1);
+    ope.get_txout_indexes_by_script(&hex_from_bytes(&self.tx), script)
   }
 
   /// Create signature hash by pubkey.
@@ -2799,6 +3052,9 @@ pub(in crate) struct ConfidentialTxOperation {
 
 impl ConfidentialTxOperation {
   pub fn new(network: &Network) -> ConfidentialTxOperation {
+    if !network.is_elements() {
+      panic!("invalid network type.");
+    }
     ConfidentialTxOperation {
       network: *network,
       last_tx: String::default(),
@@ -3144,50 +3400,263 @@ impl ConfidentialTxOperation {
     result
   }
 
+  pub fn set_issuance(
+    &mut self,
+    tx: &str,
+    outpoint: &OutPoint,
+    data: &IssuanceInputData,
+  ) -> Result<IssuanceOutputData, CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let tx_result = {
+        let output = self.set_issuance_internal(&handle, &tx_handle, outpoint, data)?;
+        self.tx_data = self.get_all_data_internal(&handle, &tx_handle, &String::default())?;
+        self.get_tx_internal(&handle, &tx_handle, &String::default())?;
+        Ok(output)
+      };
+      tx_handle.free_handle(&handle);
+      tx_result
+    };
+    handle.free_handle();
+    result
+  }
+
+  pub fn set_issuance_internal(
+    &mut self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    outpoint: &OutPoint,
+    data: &IssuanceInputData,
+  ) -> Result<IssuanceOutputData, CfdError> {
+    let asset_addr_str = match &data.asset_address {
+      InputAddress::Addr(address) => address.to_str().to_string(),
+      InputAddress::CtAddr(address) => address.to_str().to_string(),
+    };
+    let token_addr_str = match &data.token_address {
+      InputAddress::Addr(address) => address.to_str().to_string(),
+      InputAddress::CtAddr(address) => address.to_str().to_string(),
+    };
+    let txid = alloc_c_string(&outpoint.get_txid().to_hex())?;
+    let contract_hash = alloc_c_string(&data.contract_hash.to_hex())?;
+    let asset_address = alloc_c_string(&asset_addr_str)?;
+    let asset_script = alloc_c_string(&data.asset_locking_script.to_hex())?;
+    let token_address = alloc_c_string(&token_addr_str)?;
+    let token_script = alloc_c_string(&data.token_locking_script.to_hex())?;
+    let mut entropy: *mut c_char = ptr::null_mut();
+    let mut asset: *mut c_char = ptr::null_mut();
+    let mut token: *mut c_char = ptr::null_mut();
+    let error_code = unsafe {
+      CfdSetIssueAsset(
+        handle.as_handle(),
+        tx_handle.as_handle(),
+        txid.as_ptr(),
+        outpoint.get_vout(),
+        contract_hash.as_ptr(),
+        data.asset_amount,
+        asset_address.as_ptr(),
+        asset_script.as_ptr(),
+        data.token_amount,
+        token_address.as_ptr(),
+        token_script.as_ptr(),
+        data.has_blind,
+        &mut entropy,
+        &mut asset,
+        &mut token,
+      )
+    };
+    match error_code {
+      0 => {
+        let str_list = unsafe { collect_multi_cstring_and_free(&[entropy, asset, token]) }?;
+        let entropy_obj = BlindFactor::from_str(&str_list[0])?;
+        let asset_obj = ConfidentialAsset::from_str(&str_list[1])?;
+        let token_obj = ConfidentialAsset::from_str(&str_list[2])?;
+        Ok(IssuanceOutputData {
+          entropy: entropy_obj,
+          asset: asset_obj,
+          token: token_obj,
+        })
+      }
+      _ => Err(handle.get_error(error_code)),
+    }
+  }
+
   pub fn set_reissuance(
     &mut self,
     tx: &str,
     outpoint: &OutPoint,
-    asset_amount: i64,
-    blinding_nonce: &BlindFactor,
-    entropy: &BlindFactor,
-    send_address: &str,
+    data: &ReissuanceInputData,
   ) -> Result<ConfidentialTxOutData, CfdError> {
-    let tx_str = alloc_c_string(tx)?;
-    let txid = alloc_c_string(&outpoint.get_txid().to_hex())?;
-    let nonce = alloc_c_string(&blinding_nonce.to_hex())?;
-    let entropy_hex = alloc_c_string(&entropy.to_hex())?;
-    let address = alloc_c_string(send_address)?;
-    let empty_str = alloc_c_string("")?;
     let mut handle = ErrorHandle::new()?;
-    let mut asset: *mut c_char = ptr::null_mut();
-    let mut output: *mut c_char = ptr::null_mut();
-    let error_code = unsafe {
-      CfdSetRawReissueAsset(
-        handle.as_handle(),
-        tx_str.as_ptr(),
-        txid.as_ptr(),
-        outpoint.get_vout(),
-        asset_amount,
-        nonce.as_ptr(),
-        entropy_hex.as_ptr(),
-        address.as_ptr(),
-        empty_str.as_ptr(),
-        &mut asset,
-        &mut output,
-      )
-    };
-    let result = match error_code {
-      0 => {
-        let str_list = unsafe { collect_multi_cstring_and_free(&[output, asset]) }?;
-        self.last_tx = str_list[0].clone();
-        let asset_obj = ConfidentialAsset::from_str(&str_list[1])?;
-        ConfidentialTxOutData::from_str(send_address, &asset_obj, asset_amount)
-      }
-      _ => Err(handle.get_error(error_code)),
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let tx_result = {
+        let output = self.set_reissuance_internal(&handle, &tx_handle, outpoint, data)?;
+        self.tx_data = self.get_all_data_internal(&handle, &tx_handle, &String::default())?;
+        self.get_tx_internal(&handle, &tx_handle, &String::default())?;
+        Ok(output)
+      };
+      tx_handle.free_handle(&handle);
+      tx_result
     };
     handle.free_handle();
     result
+  }
+
+  pub fn set_reissuance_internal(
+    &mut self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    outpoint: &OutPoint,
+    data: &ReissuanceInputData,
+  ) -> Result<ConfidentialTxOutData, CfdError> {
+    let asset_addr_str = match &data.asset_address {
+      InputAddress::Addr(address) => address.to_str().to_string(),
+      InputAddress::CtAddr(address) => address.to_str().to_string(),
+    };
+    let txid = alloc_c_string(&outpoint.get_txid().to_hex())?;
+    let nonce = alloc_c_string(&data.blinding_nonce.to_hex())?;
+    let entropy_hex = alloc_c_string(&data.entropy.to_hex())?;
+    let address = alloc_c_string(&asset_addr_str)?;
+    let script = alloc_c_string(&data.asset_locking_script.to_hex())?;
+    let mut asset: *mut c_char = ptr::null_mut();
+    let error_code = unsafe {
+      CfdSetReissueAsset(
+        handle.as_handle(),
+        tx_handle.as_handle(),
+        txid.as_ptr(),
+        outpoint.get_vout(),
+        data.asset_amount,
+        nonce.as_ptr(),
+        entropy_hex.as_ptr(),
+        address.as_ptr(),
+        script.as_ptr(),
+        &mut asset,
+      )
+    };
+    match error_code {
+      0 => {
+        let asset_str = unsafe { collect_cstring_and_free(asset) }?;
+        let asset_obj = ConfidentialAsset::from_str(&asset_str)?;
+        ConfidentialTxOutData::from_str(&asset_addr_str, &asset_obj, data.asset_amount)
+      }
+      _ => Err(handle.get_error(error_code)),
+    }
+  }
+
+  pub fn add_pegin_input(
+    &mut self,
+    tx: &str,
+    outpoint: &OutPoint,
+    data: &PeginInputData,
+  ) -> Result<Vec<u8>, CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let tx_result = {
+        self.add_pegin_input_internal(&handle, &tx_handle, outpoint, data)?;
+        self.tx_data = self.get_all_data_internal(&handle, &tx_handle, &String::default())?;
+        self.get_tx_internal(&handle, &tx_handle, &String::default())
+      };
+      tx_handle.free_handle(&handle);
+      tx_result
+    };
+    handle.free_handle();
+    result
+  }
+
+  pub fn add_pegin_input_internal(
+    &mut self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    outpoint: &OutPoint,
+    data: &PeginInputData,
+  ) -> Result<(), CfdError> {
+    let txid = alloc_c_string(&outpoint.get_txid().to_hex())?;
+    let asset = alloc_c_string(&data.asset.to_hex())?;
+    let block_hash = alloc_c_string(&data.mainchain_genesis_block_hash.to_hex())?;
+    let script = alloc_c_string(&data.claim_script.to_hex())?;
+    let tx = alloc_c_string(&data.transaction.to_str())?;
+    let txout_proof = alloc_c_string(&data.txout_proof.to_hex())?;
+    let error_code = unsafe {
+      CfdAddTxPeginInput(
+        handle.as_handle(),
+        tx_handle.as_handle(),
+        txid.as_ptr(),
+        outpoint.get_vout(),
+        data.amount,
+        asset.as_ptr(),
+        block_hash.as_ptr(),
+        script.as_ptr(),
+        tx.as_ptr(),
+        txout_proof.as_ptr(),
+      )
+    };
+    match error_code {
+      0 => Ok(()),
+      _ => Err(handle.get_error(error_code)),
+    }
+  }
+
+  pub fn add_pegout_output(
+    &mut self,
+    tx: &str,
+    data: &PegoutInputData,
+  ) -> Result<(Vec<u8>, Address), CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let tx_result = {
+        let addr = self.add_pegout_output_internal(&handle, &tx_handle, data)?;
+        self.tx_data = self.get_all_data_internal(&handle, &tx_handle, &String::default())?;
+        let tx_bytes = self.get_tx_internal(&handle, &tx_handle, &String::default())?;
+        Ok((tx_bytes, addr))
+      };
+      tx_handle.free_handle(&handle);
+      tx_result
+    };
+    handle.free_handle();
+    result
+  }
+
+  pub fn add_pegout_output_internal(
+    &mut self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    data: &PegoutInputData,
+  ) -> Result<Address, CfdError> {
+    let online_pubkey_obj = data.online_privkey.get_pubkey()?;
+    let asset = alloc_c_string(&data.asset.to_hex())?;
+    let online_key = alloc_c_string(&data.online_privkey.to_hex())?;
+    let online_pubkey = alloc_c_string(&online_pubkey_obj.to_hex())?;
+    let genesis_block_hash = alloc_c_string(&data.mainchain_genesis_block_hash.to_hex())?;
+    let descriptor = alloc_c_string(&data.offline_output_descriptor)?;
+    let whitelist = alloc_c_string(&data.whitelist.to_hex())?;
+    let mut address: *mut c_char = ptr::null_mut();
+    let error_code = unsafe {
+      CfdAddTxPegoutOutput(
+        handle.as_handle(),
+        tx_handle.as_handle(),
+        asset.as_ptr(),
+        data.amount,
+        data.mainchain_network_type.to_c_value(),
+        data.elements_network_type.to_c_value(),
+        genesis_block_hash.as_ptr(),
+        online_pubkey.as_ptr(),
+        online_key.as_ptr(),
+        descriptor.as_ptr(),
+        data.bip32_counter,
+        whitelist.as_ptr(),
+        &mut address,
+      )
+    };
+    match error_code {
+      0 => {
+        let addr_str = unsafe { collect_cstring_and_free(address) }?;
+        Address::from_str(&addr_str)
+      }
+      _ => Err(handle.get_error(error_code)),
+    }
   }
 
   pub fn create(
@@ -3207,6 +3676,66 @@ impl ConfidentialTxOperation {
     txout_list: &[ConfidentialTxOutData],
   ) -> Result<Vec<u8>, CfdError> {
     self.create_tx(0, 0, tx, txin_list, txout_list)
+  }
+
+  pub fn update_witness_stack(
+    &mut self,
+    tx: &str,
+    outpoint: &OutPoint,
+    stack_index: u32,
+    data: &ByteData,
+  ) -> Result<Vec<u8>, CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let tx_result = {
+        TransactionOperation::update_witness_stack_internal(
+          &CreateTxData::new(&self.network),
+          &handle,
+          &tx_handle,
+          0,
+          outpoint,
+          stack_index,
+          data,
+        )?;
+        self.get_txin_by_outpoint_internal(&handle, &tx_handle, &String::default(), outpoint)?;
+        self.get_tx_internal(&handle, &tx_handle, &String::default())
+      }?;
+      tx_handle.free_handle(&handle);
+      tx_result
+    };
+    handle.free_handle();
+    Ok(result)
+  }
+
+  pub fn update_pegin_witness_stack(
+    &mut self,
+    tx: &str,
+    outpoint: &OutPoint,
+    stack_index: u32,
+    data: &ByteData,
+  ) -> Result<Vec<u8>, CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let tx_result = {
+        TransactionOperation::update_witness_stack_internal(
+          &CreateTxData::new(&self.network),
+          &handle,
+          &tx_handle,
+          1,
+          outpoint,
+          stack_index,
+          data,
+        )?;
+        self.get_txin_by_outpoint_internal(&handle, &tx_handle, &String::default(), outpoint)?;
+        self.get_tx_internal(&handle, &tx_handle, &String::default())
+      }?;
+      tx_handle.free_handle(&handle);
+      tx_result
+    };
+    handle.free_handle();
+    Ok(result)
   }
 
   pub fn update_output_amount(
@@ -3287,28 +3816,73 @@ impl ConfidentialTxOperation {
     result
   }
 
+  pub fn split_txout(
+    &mut self,
+    tx: &str,
+    index: u32,
+    txout_list: &[ConfidentialTxOutData],
+  ) -> Result<Vec<u8>, CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let split_result = {
+        TransactionOperation::split_txout_internal(
+          &self.network,
+          &handle,
+          &tx_handle,
+          &String::default(),
+          index,
+          &txout_list,
+        )?;
+        self.tx_data = self.get_all_data_internal(&handle, &tx_handle, &String::default())?;
+        self.get_tx_internal(&handle, &tx_handle, &String::default())
+      }?;
+      tx_handle.free_handle(&handle);
+      split_result
+    };
+    handle.free_handle();
+    Ok(result)
+  }
+
   pub fn get_all_data(&mut self, tx: &str) -> Result<ConfidentialTxData, CfdError> {
     let mut handle = ErrorHandle::new()?;
     let result = {
       let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
-      let tx_result = {
-        let data = self.get_tx_data_internal(&handle, &tx_handle, tx)?;
-        let in_count =
-          TransactionOperation::get_count_internal(&self.network, &handle, &tx_handle, tx, true)?;
-        let out_count =
-          TransactionOperation::get_count_internal(&self.network, &handle, &tx_handle, tx, false)?;
-        let in_indexes = ConfidentialTxOperation::create_index_list(in_count);
-        let out_indexes = ConfidentialTxOperation::create_index_list(out_count);
-        let in_data = self.get_tx_input_list_internal(&handle, &tx_handle, tx, &in_indexes)?;
-        let out_data = self.get_tx_output_list_internal(&handle, &tx_handle, tx, &out_indexes)?;
-        self.txin_list = in_data;
-        self.txout_list = out_data;
-        Ok(data)
-      };
+      let tx_result = self.get_all_data_internal(&handle, &tx_handle, &String::default());
       tx_handle.free_handle(&handle);
       tx_result
     };
     handle.free_handle();
+    result
+  }
+
+  fn get_all_data_internal(
+    &mut self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    tx: &str,
+  ) -> Result<ConfidentialTxData, CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+    };
+    let result = {
+      let data = self.get_tx_data_internal(&handle, &tx_handle, tx)?;
+      let in_count =
+        TransactionOperation::get_count_internal(&self.network, &handle, &tx_handle, tx, true)?;
+      let out_count =
+        TransactionOperation::get_count_internal(&self.network, &handle, &tx_handle, tx, false)?;
+      let in_indexes = ConfidentialTxOperation::create_index_list(in_count);
+      let out_indexes = ConfidentialTxOperation::create_index_list(out_count);
+      let in_data = self.get_tx_input_list_internal(&handle, &tx_handle, tx, &in_indexes)?;
+      let out_data = self.get_tx_output_list_internal(&handle, &tx_handle, tx, &out_indexes)?;
+      self.txin_list = in_data;
+      self.txout_list = out_data;
+      Ok(data)
+    };
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(&handle);
+    }
     result
   }
 
@@ -3331,6 +3905,36 @@ impl ConfidentialTxOperation {
   }
   pub fn get_txout_list_cache(&self) -> &[ConfidentialTxOut] {
     &self.txout_list
+  }
+
+  fn get_tx_internal(
+    &mut self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    tx: &str,
+  ) -> Result<Vec<u8>, CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+    };
+    let mut output: *mut c_char = ptr::null_mut();
+    let result = {
+      let error_code = unsafe {
+        CfdFinalizeTransaction(handle.as_handle(), tx_data_handle.as_handle(), &mut output)
+      };
+      match error_code {
+        0 => {
+          let output_obj = unsafe { collect_cstring_and_free(output) }?;
+          self.last_tx = output_obj;
+          Ok(byte_from_hex_unsafe(&self.last_tx))
+        }
+        _ => Err(handle.get_error(error_code)),
+      }
+    };
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(&handle);
+    }
+    result
   }
 
   pub fn get_tx_data(&self, tx: &str) -> Result<ConfidentialTxData, CfdError> {
@@ -3431,6 +4035,54 @@ impl ConfidentialTxOperation {
     };
     handle.free_handle();
     result
+  }
+
+  pub fn get_txin_by_outpoint_internal(
+    &mut self,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    tx: &str,
+    outpoint: &OutPoint,
+  ) -> Result<ConfidentialTxIn, CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+    };
+    let list_result = {
+      let index = {
+        let mut index: c_uint = 0;
+        let txid = alloc_c_string(&outpoint.get_txid().to_hex())?;
+        let error_code = unsafe {
+          CfdGetTxInIndexByHandle(
+            handle.as_handle(),
+            tx_data_handle.as_handle(),
+            txid.as_ptr(),
+            outpoint.get_vout(),
+            &mut index,
+          )
+        };
+        match error_code {
+          0 => Ok(index),
+          _ => Err(handle.get_error(error_code)),
+        }
+      }?;
+
+      let indexes = vec![index];
+      let list_result = self.get_tx_input_list_internal(&handle, &tx_data_handle, tx, &indexes)?;
+      let data_result = self.get_tx_data_internal(&handle, &tx_data_handle, tx)?;
+      self.tx_data = data_result;
+      if list_result.is_empty() {
+        Err(CfdError::Internal("Failed to empty list.".to_string()))
+      } else {
+        self.last_txin_index = index;
+        self.txin_list = vec![list_result[0].clone()];
+        Ok(list_result[0].clone())
+      }
+    };
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(&handle);
+    }
+    list_result
   }
 
   pub fn get_tx_input_list_internal(

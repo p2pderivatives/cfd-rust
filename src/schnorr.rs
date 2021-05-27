@@ -555,11 +555,9 @@ pub struct SchnorrPubkey {
 
 impl SchnorrPubkey {
   fn from_bytes(data: &[u8]) -> SchnorrPubkey {
-    let mut nonce = SchnorrPubkey {
-      data: [0; SCHNORR_NONCE_SIZE],
-    };
-    nonce.data = copy_array_32byte(&data);
-    nonce
+    SchnorrPubkey {
+      data: copy_array_32byte(&data),
+    }
   }
 
   /// Generate from slice.
@@ -826,6 +824,24 @@ impl SchnorrPubkey {
     };
     handle.free_handle();
     result
+  }
+
+  /// Check valid data.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{SchnorrPubkey};
+  /// use std::str::FromStr;
+  /// let key = SchnorrPubkey::from_str("b33cc9edc096d0a83416964bd3c6247b8fecd256e4efa7870d2c854bdeb33390").expect("Fail");
+  /// let is_valid = key.valid();
+  /// assert_eq!(true, is_valid);
+  /// assert_eq!(false, SchnorrPubkey::default().valid());
+  /// ```
+  #[inline]
+  pub fn valid(&self) -> bool {
+    let null_value = SchnorrPubkey::default();
+    null_value.data != self.data
   }
 }
 

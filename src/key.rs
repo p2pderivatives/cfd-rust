@@ -1031,6 +1031,18 @@ pub enum SigHashType {
   NonePlusAnyoneCanPay,
   /// SigHashType::Single + AnyoneCanPay
   SinglePlusAnyoneCanPay,
+  /// SigHashType::All + Rangeproof
+  AllPlusRangeproof,
+  /// SigHashType::None + Rangeproof
+  NonePlusRangeproof,
+  /// SigHashType::Single + Rangeproof
+  SinglePlusRangeproof,
+  /// SigHashType::All + AnyoneCanPay + Rangeproof
+  AllPlusAnyoneCanPayRangeproof,
+  /// SigHashType::None + AnyoneCanPay + Rangeproof
+  NonePlusAnyoneCanPayRangeproof,
+  /// SigHashType::Single + AnyoneCanPay + Rangeproof
+  SinglePlusAnyoneCanPayRangeproof,
 }
 
 impl SigHashType {
@@ -1044,26 +1056,67 @@ impl SigHashType {
   ///
   /// ```
   /// use cfd_rust::SigHashType;
-  /// let all_anyone_can_pay = SigHashType::new(&SigHashType::All, true);
+  /// let all_anyone_can_pay = SigHashType::new(&SigHashType::All, true, false);
   /// ```
-  #[inline]
-  pub fn new(sighash_type: &SigHashType, anyone_can_pay: bool) -> SigHashType {
-    if anyone_can_pay {
-      match sighash_type {
-        SigHashType::All | SigHashType::AllPlusAnyoneCanPay => SigHashType::AllPlusAnyoneCanPay,
-        SigHashType::None | SigHashType::NonePlusAnyoneCanPay => SigHashType::NonePlusAnyoneCanPay,
-        SigHashType::Single | SigHashType::SinglePlusAnyoneCanPay => {
-          SigHashType::SinglePlusAnyoneCanPay
+  pub fn new(sighash_type: &SigHashType, anyone_can_pay: bool, rangeproof: bool) -> SigHashType {
+    let base_type = sighash_type.get_base_type();
+    let is_anyone_can_pay = anyone_can_pay || sighash_type.is_anyone_can_pay();
+    let is_rangeproof = rangeproof || sighash_type.is_rangeproof();
+    match *base_type {
+      SigHashType::Default => *base_type,
+      SigHashType::None => {
+        if is_anyone_can_pay && is_rangeproof {
+          SigHashType::NonePlusAnyoneCanPayRangeproof
+        } else if is_anyone_can_pay {
+          SigHashType::NonePlusAnyoneCanPay
+        } else if is_rangeproof {
+          SigHashType::NonePlusRangeproof
+        } else {
+          *base_type
         }
-        SigHashType::Default => SigHashType::Default,
       }
-    } else {
-      match sighash_type {
-        SigHashType::All | SigHashType::AllPlusAnyoneCanPay => SigHashType::All,
-        SigHashType::None | SigHashType::NonePlusAnyoneCanPay => SigHashType::None,
-        SigHashType::Single | SigHashType::SinglePlusAnyoneCanPay => SigHashType::Single,
-        SigHashType::Default => SigHashType::Default,
+      SigHashType::Single => {
+        if is_anyone_can_pay && is_rangeproof {
+          SigHashType::SinglePlusAnyoneCanPayRangeproof
+        } else if is_anyone_can_pay {
+          SigHashType::SinglePlusAnyoneCanPay
+        } else if is_rangeproof {
+          SigHashType::SinglePlusRangeproof
+        } else {
+          *base_type
+        }
       }
+      _ => {
+        // SigHashType::All
+        if is_anyone_can_pay && is_rangeproof {
+          SigHashType::AllPlusAnyoneCanPayRangeproof
+        } else if is_anyone_can_pay {
+          SigHashType::AllPlusAnyoneCanPay
+        } else if is_rangeproof {
+          SigHashType::AllPlusRangeproof
+        } else {
+          *base_type
+        }
+      }
+    }
+  }
+
+  /// Get a base type.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SigHashType;
+  /// let hash_type = SigHashType::NonePlusAnyoneCanPay;
+  /// let base_type = hash_type.get_base_type();
+  /// ```
+  pub fn get_base_type(&self) -> &SigHashType {
+    match self.to_c_value() & 0x0f {
+      0 => &SigHashType::Default,
+      1 => &SigHashType::All,
+      2 => &SigHashType::None,
+      3 => &SigHashType::Single,
+      _ => &SigHashType::All,
     }
   }
 
@@ -1076,46 +1129,70 @@ impl SigHashType {
   /// let hash_type = SigHashType::NonePlusAnyoneCanPay;
   /// let anyone_can_pay = hash_type.is_anyone_can_pay();
   /// ```
-  #[inline]
   pub fn is_anyone_can_pay(&self) -> bool {
-    match self {
-      SigHashType::AllPlusAnyoneCanPay
-      | SigHashType::NonePlusAnyoneCanPay
-      | SigHashType::SinglePlusAnyoneCanPay => true,
-      SigHashType::All | SigHashType::None | SigHashType::Single | SigHashType::Default => false,
-    }
+    !matches!(self.to_c_value() & 0x80, 0)
+  }
+
+  /// Get a rangeproof flag.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::SigHashType;
+  /// let hash_type = SigHashType::NonePlusRangeproof;
+  /// let rangeproof = hash_type.is_rangeproof();
+  /// ```
+  pub fn is_rangeproof(&self) -> bool {
+    !matches!(self.to_c_value() & 0x40, 0)
   }
 
   pub(in crate) fn from_c_value(sighash_type: c_int) -> SigHashType {
-    match sighash_type {
+    let base_type = match sighash_type & 0x0f {
       0 => SigHashType::Default,
       1 => SigHashType::All,
       2 => SigHashType::None,
       3 => SigHashType::Single,
       _ => SigHashType::All,
-    }
+    };
+    let anyone_can_pay = !matches!(sighash_type & 0x80, 0);
+    let is_rangeproof = !matches!(sighash_type & 0x40, 0);
+    SigHashType::new(&base_type, anyone_can_pay, is_rangeproof)
   }
 
   pub(in crate) fn to_c_value(&self) -> c_int {
     match self {
       SigHashType::Default => 0,
-      SigHashType::All | SigHashType::AllPlusAnyoneCanPay => 1,
-      SigHashType::None | SigHashType::NonePlusAnyoneCanPay => 2,
-      SigHashType::Single | SigHashType::SinglePlusAnyoneCanPay => 3,
+      SigHashType::All => 1,
+      SigHashType::None => 2,
+      SigHashType::Single => 3,
+      SigHashType::AllPlusAnyoneCanPay => 0x81,
+      SigHashType::NonePlusAnyoneCanPay => 0x82,
+      SigHashType::SinglePlusAnyoneCanPay => 0x83,
+      SigHashType::AllPlusRangeproof => 0x41,
+      SigHashType::NonePlusRangeproof => 0x42,
+      SigHashType::SinglePlusRangeproof => 0x43,
+      SigHashType::AllPlusAnyoneCanPayRangeproof => 0xc1,
+      SigHashType::NonePlusAnyoneCanPayRangeproof => 0xc2,
+      SigHashType::SinglePlusAnyoneCanPayRangeproof => 0xc3,
     }
   }
 }
 
 impl fmt::Display for SigHashType {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let _ = match *self {
+    let base_type = self.get_base_type();
+    let _ = match base_type {
       SigHashType::Default => write!(f, "sighashType:Default"),
-      SigHashType::All | SigHashType::AllPlusAnyoneCanPay => write!(f, "sighashType:All"),
-      SigHashType::None | SigHashType::NonePlusAnyoneCanPay => write!(f, "sighashType:None"),
-      SigHashType::Single | SigHashType::SinglePlusAnyoneCanPay => write!(f, "sighashType:Single"),
+      SigHashType::None => write!(f, "sighashType:None"),
+      SigHashType::Single => write!(f, "sighashType:Single"),
+      _ => write!(f, "sighashType:All"),
     }?;
     match self.is_anyone_can_pay() {
-      true => write!(f, ", anyoneCanPay"),
+      true => write!(f, "|anyoneCanPay"),
+      _ => Ok(()),
+    }?;
+    match self.is_rangeproof() {
+      true => write!(f, "|rangeproof"),
       _ => Ok(()),
     }
   }
@@ -1381,7 +1458,11 @@ impl SignParameter {
         let der_decoded = unsafe { collect_cstring_and_free(signature) }?;
         let sign_param = SignParameter::from_vec(byte_from_hex_unsafe(&der_decoded));
         let sighash_type = SigHashType::from_c_value(sighash_type_value);
-        Ok(sign_param.set_signature_hash(&SigHashType::new(&sighash_type, is_anyone_can_pay)))
+        Ok(sign_param.set_signature_hash(&SigHashType::new(
+          &sighash_type,
+          is_anyone_can_pay,
+          false,
+        )))
       }
       _ => Err(handle.get_error(error_code)),
     };

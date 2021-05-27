@@ -8,7 +8,7 @@ use crate::common::{
   hex_from_bytes, Amount, ByteData, CfdError, ErrorHandle, Network, ReverseContainer,
 };
 use crate::confidential_address::ConfidentialAddress;
-use crate::confidential_transaction::ConfidentialAsset;
+use crate::confidential_transaction::{ConfidentialAsset, ConfidentialTxOutData};
 use crate::descriptor::Descriptor;
 use crate::key::{KeyPair, Privkey, Pubkey, SigHashType, SignParameter};
 use crate::script::{Script, TAPROOT_HASH_SIZE};
@@ -24,22 +24,24 @@ use std::str::FromStr;
 use self::cfd_sys::{
   CfdAddCoinSelectionAmount, CfdAddCoinSelectionUtxoTemplate, CfdAddMultisigSignData,
   CfdAddMultisigSignDataToDer, CfdAddPubkeyHashSign, CfdAddScriptHashSign,
-  CfdAddSignWithPrivkeyByHandle, CfdAddSignWithPrivkeySimple, CfdAddTaprootSignByHandle,
-  CfdAddTargetAmountForFundRawTx, CfdAddTransactionInput, CfdAddTransactionOutput,
-  CfdAddTxInTemplateForEstimateFee, CfdAddTxInTemplateForFundRawTx, CfdAddTxSign,
-  CfdAddTxSignByHandle, CfdAddUtxoTemplateForFundRawTx, CfdCreateSighash, CfdCreateSighashByHandle,
-  CfdFinalizeCoinSelection, CfdFinalizeEstimateFee, CfdFinalizeFundRawTx, CfdFinalizeMultisigSign,
-  CfdFinalizeTransaction, CfdFreeCoinSelectionHandle, CfdFreeEstimateFeeHandle,
-  CfdFreeFundRawTxHandle, CfdFreeMultisigSignHandle, CfdFreeTxDataHandle,
+  CfdAddSignWithPrivkeyByHandle, CfdAddSignWithPrivkeySimple, CfdAddSplitTxOutData,
+  CfdAddTaprootSignByHandle, CfdAddTargetAmountForFundRawTx, CfdAddTransactionInput,
+  CfdAddTransactionOutput, CfdAddTxInTemplateForEstimateFee, CfdAddTxInTemplateForFundRawTx,
+  CfdAddTxSign, CfdAddTxSignByHandle, CfdAddUtxoTemplateForFundRawTx, CfdCreateSighash,
+  CfdCreateSighashByHandle, CfdCreateSplitTxOutHandle, CfdFinalizeCoinSelection,
+  CfdFinalizeEstimateFee, CfdFinalizeFundRawTx, CfdFinalizeMultisigSign, CfdFinalizeTransaction,
+  CfdFreeCoinSelectionHandle, CfdFreeEstimateFeeHandle, CfdFreeFundRawTxHandle,
+  CfdFreeMultisigSignHandle, CfdFreeSplitTxOutHandle, CfdFreeTxDataHandle,
   CfdGetAppendTxOutFundRawTx, CfdGetSelectedCoinIndex, CfdGetTxInByHandle, CfdGetTxInCountByHandle,
   CfdGetTxInIndex, CfdGetTxInIndexByHandle, CfdGetTxInWitnessByHandle,
   CfdGetTxInWitnessCountByHandle, CfdGetTxInfoByHandle, CfdGetTxOutByHandle,
-  CfdGetTxOutCountByHandle, CfdGetTxOutIndexByHandle, CfdInitializeCoinSelection,
-  CfdInitializeEstimateFee, CfdInitializeFundRawTx, CfdInitializeMultisigSign,
-  CfdInitializeTransaction, CfdInitializeTxDataHandle, CfdSetOptionFundRawTx,
-  CfdSetTransactionUtxoData, CfdUpdateTxOutAmount, CfdVerifySignature, CfdVerifyTxSign,
-  CfdVerifyTxSignByHandle, DEFAULT_BLIND_MINIMUM_BITS, FUND_OPT_DUST_FEE_RATE,
-  FUND_OPT_KNAPSACK_MIN_CHANGE, FUND_OPT_LONG_TERM_FEE_RATE, WITNESS_STACK_TYPE_NORMAL,
+  CfdGetTxOutCountByHandle, CfdGetTxOutIndexByHandle, CfdGetTxOutIndexWithOffsetByHandle,
+  CfdInitializeCoinSelection, CfdInitializeEstimateFee, CfdInitializeFundRawTx,
+  CfdInitializeMultisigSign, CfdInitializeTransaction, CfdInitializeTxDataHandle,
+  CfdSetOptionFundRawTx, CfdSetTransactionUtxoData, CfdSplitTxOut, CfdUpdateTxOutAmount,
+  CfdUpdateWitnessStack, CfdVerifySignature, CfdVerifyTxSign, CfdVerifyTxSignByHandle,
+  DEFAULT_BLIND_MINIMUM_BITS, FUND_OPT_DUST_FEE_RATE, FUND_OPT_KNAPSACK_MIN_CHANGE,
+  FUND_OPT_LONG_TERM_FEE_RATE, WITNESS_STACK_TYPE_NORMAL,
 };
 
 // fund option
@@ -112,6 +114,63 @@ impl Default for Txid {
   fn default() -> Txid {
     Txid {
       txid: ReverseContainer::default(),
+    }
+  }
+}
+
+/// A container that stores a txid.
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct BlockHash {
+  hash: ReverseContainer,
+}
+
+impl BlockHash {
+  /// Generate from slice.
+  ///
+  /// # Arguments
+  /// * `hash` - An unsigned 8bit slice that holds the block hash.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::BlockHash;
+  /// let bytes = [2; 32];
+  /// let data = BlockHash::from_slice(&bytes);
+  /// ```
+  pub fn from_slice(hash: &[u8; TXID_SIZE]) -> BlockHash {
+    BlockHash {
+      hash: ReverseContainer::from_slice(hash),
+    }
+  }
+
+  #[inline]
+  pub fn to_slice(&self) -> &[u8; TXID_SIZE] {
+    self.hash.to_slice()
+  }
+
+  pub fn to_hex(&self) -> String {
+    self.hash.to_hex()
+  }
+}
+
+impl FromStr for BlockHash {
+  type Err = CfdError;
+  fn from_str(text: &str) -> Result<BlockHash, CfdError> {
+    let hash = ReverseContainer::from_str(text)?;
+    Ok(BlockHash { hash })
+  }
+}
+
+impl fmt::Display for BlockHash {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{}", &self.to_hex())
+  }
+}
+
+impl Default for BlockHash {
+  fn default() -> BlockHash {
+    BlockHash {
+      hash: ReverseContainer::default(),
     }
   }
 }
@@ -701,6 +760,15 @@ impl TxOutData {
       asset: String::default(),
     }
   }
+
+  pub fn from_locking_script(amount: i64, locking_script: &Script) -> TxOutData {
+    TxOutData {
+      amount,
+      address: Address::default(),
+      locking_script: locking_script.clone(),
+      asset: String::default(),
+    }
+  }
 }
 
 /// A container that stores transaction input.
@@ -968,6 +1036,43 @@ impl Transaction {
     })
   }
 
+  /// Update witness stack.
+  ///
+  /// # Arguments
+  /// * `outpoint` - An outpoint.
+  /// * `stack_index` - A witness stack index.
+  /// * `data` - A witness stack data.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{OutPoint, Transaction, ByteData};
+  /// use std::str::FromStr;
+  /// let outpoint = OutPoint::from_str(
+  ///   "2fea883042440d030ca5929814ead927075a8f52fef5f4720fa3cec2e475d916",
+  ///   0).expect("Fail");
+  /// let data = ByteData::from_str("61f75636003a870b7a1685abae84eedf8c9527227ac70183c376f7b3a35b07ebcbea14749e58ce1a87565b035b2f3963baa5ae3ede95e89fd607ab7849f2087201").expect("Fail");
+  /// let tx = Transaction::from_str("0200000000010116d975e4c2cea30f72f4f5fe528f5a0727d9ea149892a50c030d44423088ea2f0000000000ffffffff0130f1029500000000160014164e985d0fc92c927a66c0cbaf78e6ea389629d5014161f75636003a870b7a1685abae84eedf8c9527227ac70183c376f7b3a35b07ebcbea14749e58ce1a87565b035b2f3963baa5ae3ede95e89fd607ab7849f208720200000000").expect("Fail");
+  /// let tx2 = tx.update_witness_stack(&outpoint, 0, &data).expect("Fail");
+  /// ```
+  pub fn update_witness_stack(
+    &self,
+    outpoint: &OutPoint,
+    stack_index: u32,
+    data: &ByteData,
+  ) -> Result<Transaction, CfdError> {
+    let mut ope = TransactionOperation::new(&Network::Mainnet);
+    let tx = ope.update_witness_stack(&hex_from_bytes(&self.tx), outpoint, stack_index, data)?;
+    let data = ope.get_last_tx_data();
+    Ok(Transaction {
+      tx,
+      data: data.clone(),
+      txin_list: ope.get_txin_list_cache().to_vec(),
+      txout_list: self.txout_list.clone(),
+      txin_utxo_list: self.txin_utxo_list.clone(),
+    })
+  }
+
   /// Update amount.
   ///
   /// # Arguments
@@ -991,16 +1096,52 @@ impl Transaction {
   pub fn update_amount(&self, index: u32, amount: i64) -> Result<Transaction, CfdError> {
     let mut ope = TransactionOperation::new(&Network::Mainnet);
     let tx = ope.update_output_amount(&hex_from_bytes(&self.tx), index, amount)?;
-    let data = ope.get_tx_data(ope.get_last_tx())?;
+    let data = ope.get_last_tx_data();
     let mut tx_obj = Transaction {
       tx,
-      data,
+      data: data.clone(),
       txin_list: self.txin_list.clone(),
       txout_list: self.txout_list.clone(),
       txin_utxo_list: self.txin_utxo_list.clone(),
     };
     tx_obj.txout_list[index as usize].amount = amount;
     Ok(tx_obj)
+  }
+
+  /// Split txout.
+  ///
+  /// # Arguments
+  /// * `index` - A txout index.
+  /// * `txout_list` - txout list.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{Address, OutPoint, Transaction, TxInData, TxOutData};
+  /// let outpoint = OutPoint::from_str(
+  ///   "0202020202020202020202020202020202020202020202020202020202020202",
+  ///   1).expect("Fail");
+  /// let txin_list = [TxInData::new(&outpoint)];
+  /// let amount: i64 = 50000;
+  /// let addr = Address::from_string("bc1q7jm5vw5cunpy3lkvwdl3sr3qfm794xd4jcdzrv").expect("Fail");
+  /// let addr2 = Address::from_string("2MvmzAFKZ5xh44vyb7qY7NB2AoDuS55rVFW").expect("Fail");
+  /// let txout_list = [TxOutData::from_address(amount, &addr)];
+  /// let split_txout_list = [TxOutData::from_address(10000, &addr2)];
+  /// let tx = Transaction::create_tx(2, 0, &txin_list, &txout_list).expect("Fail");
+  /// let tx2 = tx.split_txout(0, &split_txout_list).expect("Fail");
+  /// ```
+  pub fn split_txout(&self, index: u32, txout_list: &[TxOutData]) -> Result<Transaction, CfdError> {
+    let mut ope = TransactionOperation::new(&Network::Mainnet);
+    let tx = ope.split_txout(&hex_from_bytes(&self.tx), index, txout_list)?;
+    let data = ope.get_last_tx_data();
+    let txout_list = ope.get_txout_list_cache();
+    Ok(Transaction {
+      tx,
+      data: data.clone(),
+      txin_list: self.txin_list.clone(),
+      txout_list: txout_list.to_vec(),
+      txin_utxo_list: self.txin_utxo_list.clone(),
+    })
   }
 
   pub fn get_txin_index(&self, outpoint: &OutPoint) -> Result<u32, CfdError> {
@@ -1016,6 +1157,16 @@ impl Transaction {
   pub fn get_txout_index_by_script(&self, script: &Script) -> Result<u32, CfdError> {
     let ope = TransactionOperation::new(&Network::Mainnet);
     ope.get_txout_index_by_script(&hex_from_bytes(&self.tx), script)
+  }
+
+  pub fn get_txout_indexes_by_address(&self, address: &Address) -> Result<Vec<u32>, CfdError> {
+    let ope = TransactionOperation::new(&Network::Mainnet);
+    ope.get_txout_indexes_by_address(&hex_from_bytes(&self.tx), address)
+  }
+
+  pub fn get_txout_indexes_by_script(&self, script: &Script) -> Result<Vec<u32>, CfdError> {
+    let ope = TransactionOperation::new(&Network::Mainnet);
+    ope.get_txout_indexes_by_script(&hex_from_bytes(&self.tx), script)
   }
 
   /// Create signature hash by pubkey.
@@ -2207,6 +2358,30 @@ impl HashTypeData {
   }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(in crate) struct CreateTxData {
+  pub tx: String,
+  pub network: Network,
+}
+
+impl CreateTxData {
+  pub fn new(network: &Network) -> CreateTxData {
+    CreateTxData {
+      tx: String::default(),
+      network: *network,
+    }
+  }
+}
+
+impl Default for CreateTxData {
+  fn default() -> CreateTxData {
+    CreateTxData {
+      tx: String::default(),
+      network: Network::Mainnet,
+    }
+  }
+}
+
 /// A container that operating transaction base.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(in crate) struct TransactionOperation {
@@ -2266,6 +2441,74 @@ impl TransactionOperation {
     self.create_tx(0, 0, tx, txin_list, txout_list)
   }
 
+  pub fn update_witness_stack(
+    &mut self,
+    tx: &str,
+    outpoint: &OutPoint,
+    stack_index: u32,
+    data: &ByteData,
+  ) -> Result<Vec<u8>, CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let tx_result = {
+        TransactionOperation::update_witness_stack_internal(
+          &CreateTxData::default(),
+          &handle,
+          &tx_handle,
+          0,
+          outpoint,
+          stack_index,
+          data,
+        )?;
+        self.get_txin_by_outpoint_internal(&handle, &tx_handle, &String::default(), outpoint)?;
+        self.get_tx_internal(&handle, &tx_handle, &String::default())
+      }?;
+      tx_handle.free_handle(&handle);
+      tx_result
+    };
+    handle.free_handle();
+    Ok(result)
+  }
+
+  pub fn update_witness_stack_internal(
+    tx: &CreateTxData,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    witness_type: i32,
+    outpoint: &OutPoint,
+    stack_index: u32,
+    data: &ByteData,
+  ) -> Result<(), CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(&handle, &tx.network, &tx.tx)?,
+    };
+    let result = {
+      let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+      let stack_item = alloc_c_string(&data.to_hex())?;
+      let error_code = unsafe {
+        CfdUpdateWitnessStack(
+          handle.as_handle(),
+          tx_data_handle.as_handle(),
+          witness_type,
+          txid.as_ptr(),
+          outpoint.get_vout(),
+          stack_index,
+          stack_item.as_ptr(),
+        )
+      };
+      match error_code {
+        0 => Ok(()),
+        _ => Err(handle.get_error(error_code)),
+      }
+    };
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(&handle);
+    }
+    result
+  }
+
   pub fn update_output_amount(
     &mut self,
     tx: &str,
@@ -2294,6 +2537,132 @@ impl TransactionOperation {
       _ => Err(handle.get_error(error_code)),
     };
     handle.free_handle();
+    result
+  }
+
+  pub fn split_txout(
+    &mut self,
+    tx: &str,
+    index: u32,
+    txout_list: &[TxOutData],
+  ) -> Result<Vec<u8>, CfdError> {
+    let mut conv_list = vec![];
+    for txout in txout_list {
+      conv_list.push(ConfidentialTxOutData {
+        amount: txout.amount,
+        address: txout.address.clone(),
+        locking_script: txout.locking_script.clone(),
+        ..ConfidentialTxOutData::default()
+      });
+    }
+
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let split_result = {
+        TransactionOperation::split_txout_internal(
+          &self.network,
+          &handle,
+          &tx_handle,
+          &String::default(),
+          index,
+          &conv_list,
+        )?;
+        self.tx_data = self.get_all_data_internal(&handle, &tx_handle, &String::default())?;
+        self.get_tx_internal(&handle, &tx_handle, &String::default())
+      }?;
+      tx_handle.free_handle(&handle);
+      split_result
+    };
+    handle.free_handle();
+    Ok(result)
+  }
+
+  pub fn split_txout_internal(
+    network: &Network,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    tx: &str,
+    index: u32,
+    txout_list: &[ConfidentialTxOutData],
+  ) -> Result<(), CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(&handle, network, tx)?,
+    };
+    let result = {
+      let split_handle = {
+        let mut split_tx_handle: *mut c_void = ptr::null_mut();
+        let error_code = unsafe {
+          CfdCreateSplitTxOutHandle(
+            handle.as_handle(),
+            tx_data_handle.as_handle(),
+            &mut split_tx_handle,
+          )
+        };
+        match error_code {
+          0 => Ok(split_tx_handle),
+          _ => Err(handle.get_error(error_code)),
+        }
+      }?;
+      let split_ret = {
+        for txout in txout_list {
+          {
+            let address = match txout.confidential_address.to_str().is_empty() {
+              false => alloc_c_string(&txout.confidential_address.to_str()),
+              true => match txout.address.is_valid() {
+                true => alloc_c_string(&txout.address.to_str()),
+                false => alloc_c_string(""),
+              },
+            }?;
+            let script = match txout.locking_script.to_hex().len() {
+              0 => alloc_c_string(""),
+              _ => alloc_c_string(&txout.locking_script.to_hex()),
+            }?;
+            let nonce = match txout.confidential_address.to_str().is_empty() {
+              false => alloc_c_string(&txout.confidential_address.get_confidential_key().to_str()),
+              true => match txout.nonce.is_empty() {
+                false => alloc_c_string(&txout.nonce.to_hex()),
+                true => alloc_c_string(""),
+              },
+            }?;
+            let error_code = unsafe {
+              CfdAddSplitTxOutData(
+                handle.as_handle(),
+                split_handle,
+                txout.amount,
+                address.as_ptr(),
+                script.as_ptr(),
+                nonce.as_ptr(),
+              )
+            };
+            match error_code {
+              0 => Ok(()),
+              _ => Err(handle.get_error(error_code)),
+            }
+          }?
+        }
+        let error_code = unsafe {
+          CfdSplitTxOut(
+            handle.as_handle(),
+            tx_data_handle.as_handle(),
+            split_handle,
+            index,
+          )
+        };
+        match error_code {
+          0 => Ok(()),
+          _ => Err(handle.get_error(error_code)),
+        }
+      };
+      unsafe {
+        CfdFreeSplitTxOutHandle(handle.as_handle(), split_handle);
+      }
+      split_ret
+    };
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(&handle);
+    }
     result
   }
 
@@ -2734,6 +3103,39 @@ impl TransactionOperation {
     let result = {
       let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
       let result = Self::get_txout_index(&handle, &tx_handle, &Address::default(), locking_script);
+      tx_handle.free_handle(&handle);
+      result
+    };
+    handle.free_handle();
+    result
+  }
+
+  pub fn get_txout_indexes_by_address(
+    &self,
+    tx: &str,
+    address: &Address,
+  ) -> Result<Vec<u32>, CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let result = Self::get_txout_indexes(&handle, &tx_handle, address, &Script::default());
+      tx_handle.free_handle(&handle);
+      result
+    };
+    handle.free_handle();
+    result
+  }
+
+  pub fn get_txout_indexes_by_script(
+    &self,
+    tx: &str,
+    locking_script: &Script,
+  ) -> Result<Vec<u32>, CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let result =
+        Self::get_txout_indexes(&handle, &tx_handle, &Address::default(), locking_script);
       tx_handle.free_handle(&handle);
       result
     };
@@ -3900,6 +4302,63 @@ impl TransactionOperation {
     };
     match error_code {
       0 => Ok(index),
+      _ => Err(handle.get_error(error_code)),
+    }
+  }
+
+  fn get_txout_indexes(
+    handle: &ErrorHandle,
+    tx_data_handle: &TxDataHandle,
+    address: &Address,
+    locking_script: &Script,
+  ) -> Result<Vec<u32>, CfdError> {
+    let mut list = vec![];
+    let addr = alloc_c_string(address.to_str())?;
+    let script = alloc_c_string(&locking_script.to_hex())?;
+    let mut offset: c_uint = 0;
+    let mut index: c_uint = 0;
+    let error_code = unsafe {
+      CfdGetTxOutIndexWithOffsetByHandle(
+        handle.as_handle(),
+        tx_data_handle.as_handle(),
+        offset,
+        addr.as_ptr(),
+        script.as_ptr(),
+        &mut index,
+      )
+    };
+    match error_code {
+      0 => {
+        list.push(index);
+        offset = index + 1;
+        loop {
+          let has_loop = {
+            let error_code = unsafe {
+              CfdGetTxOutIndexWithOffsetByHandle(
+                handle.as_handle(),
+                tx_data_handle.as_handle(),
+                offset,
+                addr.as_ptr(),
+                script.as_ptr(),
+                &mut index,
+              )
+            };
+            match error_code {
+              0 => {
+                list.push(index);
+                offset = index + 1;
+                Ok(true)
+              }
+              3 => Ok(false), // out-of-range
+              _ => Err(handle.get_error(error_code)),
+            }
+          }?;
+          if !has_loop {
+            break;
+          }
+        }
+        Ok(list)
+      }
       _ => Err(handle.get_error(error_code)),
     }
   }
