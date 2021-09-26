@@ -106,8 +106,8 @@ impl ConfidentialAddress {
         let str_list = unsafe { collect_multi_cstring_and_free(&[address, confidential_key]) }?;
         let addr_obj = &str_list[0];
         let ct_key_obj = &str_list[1];
-        let addr = Address::from_string(&addr_obj)?;
-        let ct_key = Pubkey::from_str(&ct_key_obj)?;
+        let addr = Address::from_string(addr_obj)?;
+        let ct_key = Pubkey::from_str(ct_key_obj)?;
         Ok(ConfidentialAddress {
           confidential_address: confidential_address.to_string(),
           address: addr,

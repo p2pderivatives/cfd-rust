@@ -45,7 +45,7 @@ impl Privkey {
       net_type: Network::Mainnet,
       is_compressed: true,
     };
-    privkey.key = copy_array_32byte(&key);
+    privkey.key = copy_array_32byte(key);
     privkey
   }
 
@@ -161,7 +161,7 @@ impl Privkey {
         let str_list = unsafe { collect_multi_cstring_and_free(&[pubkey_hex, privkey_hex, wif]) }?;
         let privkey_obj = &str_list[1];
         let wif_str = &str_list[2];
-        let privkey_bytes = byte_from_hex_unsafe(&privkey_obj);
+        let privkey_bytes = byte_from_hex_unsafe(privkey_obj);
         let mut privkey = Privkey::from_bytes(&privkey_bytes);
         privkey.wif = wif_str.clone();
         privkey.net_type = *network_type;
@@ -1159,7 +1159,7 @@ impl SigHashType {
     SigHashType::new(&base_type, anyone_can_pay, is_rangeproof)
   }
 
-  pub(in crate) fn to_c_value(&self) -> c_int {
+  pub(in crate) fn to_c_value(self) -> c_int {
     match self {
       SigHashType::Default => 0,
       SigHashType::All => 1,
@@ -1284,11 +1284,10 @@ impl SignParameter {
   pub fn set_use_der_encode(mut self, sighash_type: &SigHashType) -> SignParameter {
     if self.data.len() > 65 {
       // target is already der-encoded. unused sighash-type.
-      self.set_signature_hash(&sighash_type)
     } else {
       self.use_der_encode = true;
-      self.set_signature_hash(&sighash_type)
     }
+    self.set_signature_hash(sighash_type)
   }
 
   /// Set a related pubkey. Used to sort multisig signatures.

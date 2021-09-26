@@ -38,10 +38,10 @@ use self::cfd_sys::{
   CfdGetTxOutCountByHandle, CfdGetTxOutIndexByHandle, CfdGetTxOutIndexWithOffsetByHandle,
   CfdInitializeCoinSelection, CfdInitializeEstimateFee, CfdInitializeFundRawTx,
   CfdInitializeMultisigSign, CfdInitializeTransaction, CfdInitializeTxDataHandle,
-  CfdSetOptionFundRawTx, CfdSetTransactionUtxoData, CfdSplitTxOut, CfdUpdateTxOutAmount,
-  CfdUpdateWitnessStack, CfdVerifySignature, CfdVerifyTxSign, CfdVerifyTxSignByHandle,
-  DEFAULT_BLIND_MINIMUM_BITS, FUND_OPT_DUST_FEE_RATE, FUND_OPT_KNAPSACK_MIN_CHANGE,
-  FUND_OPT_LONG_TERM_FEE_RATE, WITNESS_STACK_TYPE_NORMAL,
+  CfdSetOptionFundRawTx, CfdSetTransactionUtxoData, CfdSplitTxOut, CfdUpdateTxInSequence,
+  CfdUpdateTxOutAmount, CfdUpdateWitnessStack, CfdVerifySignature, CfdVerifyTxSign,
+  CfdVerifyTxSignByHandle, DEFAULT_BLIND_MINIMUM_BITS, FUND_OPT_DUST_FEE_RATE,
+  FUND_OPT_KNAPSACK_MIN_CHANGE, FUND_OPT_LONG_TERM_FEE_RATE, WITNESS_STACK_TYPE_NORMAL,
 };
 
 // fund option
@@ -1036,6 +1036,40 @@ impl Transaction {
     })
   }
 
+  /// Update txin sequence.
+  ///
+  /// # Arguments
+  /// * `outpoint` - An outpoint.
+  /// * `sequence` - A sequence number.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use cfd_rust::{OutPoint, Transaction};
+  /// use std::str::FromStr;
+  /// let outpoint = OutPoint::from_str(
+  ///   "2fea883042440d030ca5929814ead927075a8f52fef5f4720fa3cec2e475d916",
+  ///   0).expect("Fail");
+  /// let tx = Transaction::from_str("0200000000010116d975e4c2cea30f72f4f5fe528f5a0727d9ea149892a50c030d44423088ea2f0000000000ffffffff0130f1029500000000160014164e985d0fc92c927a66c0cbaf78e6ea389629d5014161f75636003a870b7a1685abae84eedf8c9527227ac70183c376f7b3a35b07ebcbea14749e58ce1a87565b035b2f3963baa5ae3ede95e89fd607ab7849f208720200000000").expect("Fail");
+  /// let tx2 = tx.update_txin_sequence(&outpoint, 0xfffffffe).expect("Fail");
+  /// ```
+  pub fn update_txin_sequence(
+    &self,
+    outpoint: &OutPoint,
+    sequence: u32,
+  ) -> Result<Transaction, CfdError> {
+    let mut ope = TransactionOperation::new(&Network::Mainnet);
+    let tx = ope.update_txin_sequence(&hex_from_bytes(&self.tx), outpoint, sequence)?;
+    let data = ope.get_last_tx_data();
+    Ok(Transaction {
+      tx,
+      data: data.clone(),
+      txin_list: ope.get_txin_list_cache().to_vec(),
+      txout_list: self.txout_list.clone(),
+      txin_utxo_list: self.txin_utxo_list.clone(),
+    })
+  }
+
   /// Update witness stack.
   ///
   /// # Arguments
@@ -1420,7 +1454,7 @@ impl Transaction {
       &hex_from_bytes(&self.tx),
       outpoint,
       &String::default(),
-      &redeem_script,
+      redeem_script,
       &option,
     )
   }
@@ -1536,7 +1570,7 @@ impl Transaction {
     let tx = ope.add_pubkey_hash_sign(&tx_hex, outpoint, hash_type, pubkey, signature)?;
     let new_tx_hex = ope.get_last_tx();
     let mut ope2 = ope.clone();
-    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let new_txin = ope2.get_txin_by_outpoint(new_tx_hex, outpoint)?;
     let index = ope2.get_last_txin_index();
     let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
@@ -1651,7 +1685,7 @@ impl Transaction {
     let tx = ope.sign_with_privkey(&tx_hex, outpoint, hash_type, &key, &option, true)?;
     let new_tx_hex = ope.get_last_tx();
     let mut ope2 = ope.clone();
-    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let new_txin = ope2.get_txin_by_outpoint(new_tx_hex, outpoint)?;
     let index = ope2.get_last_txin_index();
     let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
@@ -1708,10 +1742,10 @@ impl Transaction {
     let mut option = SigHashOption::new(*sighash_type, 0);
     option.annex = annex.to_vec();
     option.aux_rand = aux_rand.to_vec();
-    let tx = ope.sign_with_privkey_by_utxo_list(&tx_hex, outpoint, &privkey, &option, true)?;
+    let tx = ope.sign_with_privkey_by_utxo_list(&tx_hex, outpoint, privkey, &option, true)?;
     let new_tx_hex = ope.get_last_tx();
     let mut ope2 = ope.clone();
-    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let new_txin = ope2.get_txin_by_outpoint(new_tx_hex, outpoint)?;
     let index = ope2.get_last_txin_index();
     let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
@@ -1781,7 +1815,7 @@ impl Transaction {
     let tx = ope.add_multisig_sign(&tx_hex, outpoint, hash_type, redeem_script, signature_list)?;
     let new_tx_hex = ope.get_last_tx();
     let mut ope2 = ope.clone();
-    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let new_txin = ope2.get_txin_by_outpoint(new_tx_hex, outpoint)?;
     let index = ope2.get_last_txin_index();
     let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
@@ -1840,7 +1874,7 @@ impl Transaction {
     let tx = ope.add_sign(&tx_hex, outpoint, hash_type, sign_data, clear_stack)?;
     let new_tx_hex = ope.get_last_tx();
     let mut ope2 = ope.clone();
-    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let new_txin = ope2.get_txin_by_outpoint(new_tx_hex, outpoint)?;
     let index = ope2.get_last_txin_index();
     let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
@@ -1911,7 +1945,7 @@ impl Transaction {
     )?;
     let new_tx_hex = ope.get_last_tx();
     let mut ope2 = ope.clone();
-    let new_txin = ope2.get_txin_by_outpoint(&new_tx_hex, outpoint)?;
+    let new_txin = ope2.get_txin_by_outpoint(new_tx_hex, outpoint)?;
     let index = ope2.get_last_txin_index();
     let data = ope2.get_last_tx_data().clone();
     let mut tx_obj = Transaction {
@@ -2441,6 +2475,66 @@ impl TransactionOperation {
     self.create_tx(0, 0, tx, txin_list, txout_list)
   }
 
+  pub fn update_txin_sequence(
+    &mut self,
+    tx: &str,
+    outpoint: &OutPoint,
+    sequence: u32,
+  ) -> Result<Vec<u8>, CfdError> {
+    let mut handle = ErrorHandle::new()?;
+    let result = {
+      let tx_handle = TxDataHandle::new(&handle, &self.network, tx)?;
+      let tx_result = {
+        TransactionOperation::update_txin_sequence_internal(
+          &CreateTxData::default(),
+          &handle,
+          &tx_handle,
+          outpoint,
+          sequence,
+        )?;
+        self.get_txin_by_outpoint_internal(&handle, &tx_handle, &String::default(), outpoint)?;
+        self.get_tx_internal(&handle, &tx_handle, &String::default())
+      }?;
+      tx_handle.free_handle(&handle);
+      tx_result
+    };
+    handle.free_handle();
+    Ok(result)
+  }
+
+  pub fn update_txin_sequence_internal(
+    tx: &CreateTxData,
+    handle: &ErrorHandle,
+    tx_handle: &TxDataHandle,
+    outpoint: &OutPoint,
+    sequence: u32,
+  ) -> Result<(), CfdError> {
+    let tx_data_handle = match tx_handle.is_null() {
+      false => tx_handle.clone(),
+      _ => TxDataHandle::new(handle, &tx.network, &tx.tx)?,
+    };
+    let result = {
+      let txid = alloc_c_string(&outpoint.txid.to_hex())?;
+      let error_code = unsafe {
+        CfdUpdateTxInSequence(
+          handle.as_handle(),
+          tx_data_handle.as_handle(),
+          txid.as_ptr(),
+          outpoint.get_vout(),
+          sequence,
+        )
+      };
+      match error_code {
+        0 => Ok(()),
+        _ => Err(handle.get_error(error_code)),
+      }
+    };
+    if tx_handle.is_null() {
+      tx_data_handle.free_handle(handle);
+    }
+    result
+  }
+
   pub fn update_witness_stack(
     &mut self,
     tx: &str,
@@ -2482,7 +2576,7 @@ impl TransactionOperation {
   ) -> Result<(), CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &tx.network, &tx.tx)?,
+      _ => TxDataHandle::new(handle, &tx.network, &tx.tx)?,
     };
     let result = {
       let txid = alloc_c_string(&outpoint.txid.to_hex())?;
@@ -2504,7 +2598,7 @@ impl TransactionOperation {
       }
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -2588,7 +2682,7 @@ impl TransactionOperation {
   ) -> Result<(), CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, network, tx)?,
+      _ => TxDataHandle::new(handle, network, tx)?,
     };
     let result = {
       let split_handle = {
@@ -2609,9 +2703,9 @@ impl TransactionOperation {
         for txout in txout_list {
           {
             let address = match txout.confidential_address.to_str().is_empty() {
-              false => alloc_c_string(&txout.confidential_address.to_str()),
+              false => alloc_c_string(txout.confidential_address.to_str()),
               true => match txout.address.is_valid() {
-                true => alloc_c_string(&txout.address.to_str()),
+                true => alloc_c_string(txout.address.to_str()),
                 false => alloc_c_string(""),
               },
             }?;
@@ -2661,7 +2755,7 @@ impl TransactionOperation {
       split_ret
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -2686,23 +2780,22 @@ impl TransactionOperation {
   ) -> Result<TxData, CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+      _ => TxDataHandle::new(handle, &self.network, tx)?,
     };
     let result = {
-      let data = self.get_tx_data_internal(&handle, &tx_data_handle, tx)?;
-      let in_count = Self::get_count_internal(&self.network, &handle, &tx_data_handle, tx, true)?;
-      let out_count = Self::get_count_internal(&self.network, &handle, &tx_data_handle, tx, false)?;
+      let data = self.get_tx_data_internal(handle, &tx_data_handle, tx)?;
+      let in_count = Self::get_count_internal(&self.network, handle, &tx_data_handle, tx, true)?;
+      let out_count = Self::get_count_internal(&self.network, handle, &tx_data_handle, tx, false)?;
       let in_indexes = TransactionOperation::create_index_list(in_count);
       let out_indexes = TransactionOperation::create_index_list(out_count);
-      let in_data = self.get_tx_input_list_internal(&handle, &tx_data_handle, tx, &in_indexes)?;
-      let out_data =
-        self.get_tx_output_list_internal(&handle, &tx_data_handle, tx, &out_indexes)?;
+      let in_data = self.get_tx_input_list_internal(handle, &tx_data_handle, tx, &in_indexes)?;
+      let out_data = self.get_tx_output_list_internal(handle, &tx_data_handle, tx, &out_indexes)?;
       self.txin_list = in_data;
       self.txout_list = out_data;
       Ok(data)
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -2715,7 +2808,7 @@ impl TransactionOperation {
   ) -> Result<Vec<u8>, CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+      _ => TxDataHandle::new(handle, &self.network, tx)?,
     };
     let mut output: *mut c_char = ptr::null_mut();
     let result = {
@@ -2732,7 +2825,7 @@ impl TransactionOperation {
       }
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -2773,7 +2866,7 @@ impl TransactionOperation {
   ) -> Result<TxData, CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+      _ => TxDataHandle::new(handle, &self.network, tx)?,
     };
     let mut data: TxData = TxData::default();
     let mut txid: *mut c_char = ptr::null_mut();
@@ -2803,7 +2896,7 @@ impl TransactionOperation {
       _ => Err(handle.get_error(error_code)),
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -2859,7 +2952,7 @@ impl TransactionOperation {
   ) -> Result<TxIn, CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+      _ => TxDataHandle::new(handle, &self.network, tx)?,
     };
     let list_result = {
       let index = {
@@ -2881,8 +2974,8 @@ impl TransactionOperation {
       }?;
 
       let indexes = vec![index];
-      let list_result = self.get_tx_input_list_internal(&handle, &tx_data_handle, tx, &indexes)?;
-      let data_result = self.get_tx_data_internal(&handle, &tx_data_handle, tx)?;
+      let list_result = self.get_tx_input_list_internal(handle, &tx_data_handle, tx, &indexes)?;
+      let data_result = self.get_tx_data_internal(handle, &tx_data_handle, tx)?;
       self.tx_data = data_result;
       if list_result.is_empty() {
         Err(CfdError::Internal("Failed to empty list.".to_string()))
@@ -2893,7 +2986,7 @@ impl TransactionOperation {
       }
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     list_result
   }
@@ -2907,7 +3000,7 @@ impl TransactionOperation {
   ) -> Result<Vec<TxIn>, CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+      _ => TxDataHandle::new(handle, &self.network, tx)?,
     };
     let mut list: Vec<TxIn> = vec![];
     list.reserve(indexes.len());
@@ -2935,7 +3028,7 @@ impl TransactionOperation {
               let txid_ret = Txid::from_str(&str_list[0])?;
               let script_ret = Script::from_hex(&str_list[1])?;
               let script_witness = Self::get_tx_input_witness(
-                &handle,
+                handle,
                 &tx_data_handle,
                 *index,
                 WITNESS_STACK_TYPE_NORMAL,
@@ -2959,7 +3052,7 @@ impl TransactionOperation {
       }
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -2973,7 +3066,7 @@ impl TransactionOperation {
   ) -> Result<Vec<TxOut>, CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+      _ => TxDataHandle::new(handle, &self.network, tx)?,
     };
     let mut list: Vec<TxOut> = vec![];
     list.reserve(indexes.len());
@@ -3015,7 +3108,7 @@ impl TransactionOperation {
       }
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -3039,7 +3132,7 @@ impl TransactionOperation {
   ) -> Result<u32, CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, network, tx)?,
+      _ => TxDataHandle::new(handle, network, tx)?,
     };
     let mut count: c_uint = 0;
     let error_code = unsafe {
@@ -3054,7 +3147,7 @@ impl TransactionOperation {
       _ => Err(handle.get_error(error_code)),
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -3201,7 +3294,7 @@ impl TransactionOperation {
       let result = {
         self.set_utxo_list(&handle, &tx_handle, &String::default())?;
         let txid = alloc_c_string(&outpoint.txid.to_hex())?;
-        let pubkey_str = alloc_c_string(&pubkey)?;
+        let pubkey_str = alloc_c_string(pubkey)?;
         let script_str = alloc_c_string(&redeem_script.to_hex())?;
         let tapleaf_hash = alloc_c_string(&hex_from_bytes(&option.tap_leaf_hash))?;
         let annex = alloc_c_string(&ByteData::from_slice(&option.annex).to_hex())?;
@@ -3776,7 +3869,7 @@ impl TransactionOperation {
   ) -> Result<(), CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+      _ => TxDataHandle::new(handle, &self.network, tx)?,
     };
 
     let result = {
@@ -3812,7 +3905,7 @@ impl TransactionOperation {
       Ok(())
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -3826,7 +3919,7 @@ impl TransactionOperation {
   ) -> Result<(), CfdError> {
     let tx_data_handle = match tx_handle.is_null() {
       false => tx_handle.clone(),
-      _ => TxDataHandle::new(&handle, &self.network, tx)?,
+      _ => TxDataHandle::new(handle, &self.network, tx)?,
     };
     let txid = alloc_c_string(&outpoint.txid.to_hex())?;
     let error_code = unsafe {
@@ -3842,7 +3935,7 @@ impl TransactionOperation {
       _ => Err(handle.get_error(error_code)),
     };
     if tx_handle.is_null() {
-      tx_data_handle.free_handle(&handle);
+      tx_data_handle.free_handle(handle);
     }
     result
   }
@@ -3870,7 +3963,7 @@ impl TransactionOperation {
           for txin_data in txin_list {
             let _err = {
               let txid = alloc_c_string(&txin_data.outpoint.txid.to_hex())?;
-              let descriptor = alloc_c_string(&txin_data.descriptor.to_str())?;
+              let descriptor = alloc_c_string(txin_data.descriptor.to_str())?;
               let sig_tmpl = alloc_c_string(&txin_data.scriptsig_template.to_hex())?;
               let error_code = unsafe {
                 CfdAddTxInTemplateForEstimateFee(
@@ -3953,7 +4046,7 @@ impl TransactionOperation {
           for (index, utxo_data) in utxo_list.iter().enumerate() {
             let _err = {
               let txid = alloc_c_string(&utxo_data.outpoint.txid.to_hex())?;
-              let descriptor = alloc_c_string(&utxo_data.descriptor.to_str())?;
+              let descriptor = alloc_c_string(utxo_data.descriptor.to_str())?;
               let sig_tmpl = alloc_c_string(&utxo_data.scriptsig_template.to_hex())?;
               let error_code = unsafe {
                 CfdAddCoinSelectionUtxoTemplate(
@@ -4087,7 +4180,7 @@ impl TransactionOperation {
           for txin_data in txin_list {
             let _err = {
               let txid = alloc_c_string(&txin_data.outpoint.txid.to_hex())?;
-              let descriptor = alloc_c_string(&txin_data.descriptor.to_str())?;
+              let descriptor = alloc_c_string(txin_data.descriptor.to_str())?;
               let sig_tmpl = alloc_c_string(&txin_data.scriptsig_template.to_hex())?;
               let error_code = unsafe {
                 CfdAddTxInTemplateForFundRawTx(
@@ -4115,7 +4208,7 @@ impl TransactionOperation {
           for utxo_data in utxo_list {
             let _err = {
               let txid = alloc_c_string(&utxo_data.outpoint.txid.to_hex())?;
-              let descriptor = alloc_c_string(&utxo_data.descriptor.to_str())?;
+              let descriptor = alloc_c_string(utxo_data.descriptor.to_str())?;
               let sig_tmpl = alloc_c_string(&utxo_data.scriptsig_template.to_hex())?;
               let error_code = unsafe {
                 CfdAddUtxoTemplateForFundRawTx(

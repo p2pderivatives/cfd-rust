@@ -14,9 +14,9 @@ mod tests {
     assert!(pubkey_ret.is_ok(), "err: \"{}\"", pubkey_ret.unwrap_err());
     let pubkey = pubkey_ret.unwrap();
     assert_eq!(pubkey_str, pubkey.to_hex());
-    assert_eq!(true, pubkey.valid());
+    assert!(pubkey.valid());
     let pubkey_empty = Pubkey::default();
-    assert_eq!(false, pubkey_empty.valid());
+    assert!(!pubkey_empty.valid());
     // from_slice
     let pubkey1 =
       Pubkey::from_str("031d7463018f867de51a27db866f869ceaf52abab71827a6051bab8a0fd020f4c1")
@@ -34,7 +34,7 @@ mod tests {
       Pubkey::from_str("0261e37f277f02a977b4f11eb5055abab4990bbf8dee701119d88df382fcc1fafe")
         .expect("Fail");
     let combine_key = Pubkey::combine(&[comb_pubkey1, comb_pubkey2]).expect("Fail");
-    assert_eq!(true, combine_key.valid());
+    assert!(combine_key.valid());
     assert_eq!(
       "022a66efd1ea9b1ad3acfcc62a5ce8c756fa6fc3917fce3d4952a8701244ed1049",
       combine_key.to_hex()
@@ -87,25 +87,25 @@ mod tests {
     let verify1 = pubkey_ec
       .verify_ec_signature(sighash.to_slice(), signature.to_slice())
       .expect("Fail");
-    assert_eq!(true, verify1);
+    assert!(verify1);
     let verify2 = pubkey_ec
       .verify_ec_signature(sighash.to_slice(), bad_signature.to_slice())
       .expect("Fail");
-    assert_eq!(false, verify2);
+    assert!(!verify2);
   }
 
   #[test]
   fn privkey_test() {
     // default
     let empty_key = Privkey::default();
-    assert_eq!(false, empty_key.valid());
+    assert!(!empty_key.valid());
     let key = Privkey::from_str("305e293b010d29bf3c888b617763a438fee9054c8cab66eb12ad078f819d9f27")
       .expect("fail");
     assert_eq!(
       "305e293b010d29bf3c888b617763a438fee9054c8cab66eb12ad078f819d9f27",
       key.to_hex()
     );
-    assert_eq!(true, key.valid());
+    assert!(key.valid());
     let wif =
       Privkey::from_wif("5JBb5A38fjjeBnngkvRmCsXN6EY4w8jWvckik3hDvYQMcddGY23").expect("fail");
     assert_eq!(
@@ -117,11 +117,11 @@ mod tests {
       wif.to_wif()
     );
     assert_eq!(Network::Mainnet, *wif.to_network());
-    assert_eq!(false, wif.is_compressed_pubkey());
-    assert_eq!(true, wif.valid());
+    assert!(!wif.is_compressed_pubkey());
+    assert!(wif.valid());
     // generate
     let gen_key = Privkey::generate(&Network::Testnet, true).expect("Fail");
-    assert_eq!(true, gen_key.valid());
+    assert!(gen_key.valid());
     // get_wif
     let wif_base =
       Privkey::from_str("305e293b010d29bf3c888b617763a438fee9054c8cab66eb12ad078f819d9f27")

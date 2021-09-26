@@ -44,7 +44,7 @@ mod tests {
     let is_verify = obj
       .verify(&pair.signature, &pair.proof, &adaptor, &msg, &pubkey)
       .expect("Fail");
-    assert_eq!(true, is_verify);
+    assert!(is_verify);
 
     let signature = obj.adapt(&adaptor_sig2, &secret).expect("Fail");
     assert_eq!(expect_sig.to_hex(), signature.to_hex());
@@ -96,7 +96,7 @@ mod tests {
     assert_eq!(expected_sig_point, sig_point.to_hex());
 
     let is_verify = obj.verify(&sig1, &msg, &pubkey).expect("Fail");
-    assert_eq!(true, is_verify);
+    assert!(is_verify);
 
     let expected_nonce = "6470fd1303dda4fda717b9837153c24a6eab377183fc438f939e0ed2b620e9ee";
     let expected_privkey = "5077c4a8b8dca28963d772a94f5f0ddf598e1c47c137f91933274c7c3edadce8";
@@ -126,30 +126,30 @@ mod tests {
 
     let (schnorr_pubkey, parity) = SchnorrPubkey::from_privkey(&sk).expect("Fail");
     assert_eq!(pubkey.to_hex(), schnorr_pubkey.to_hex());
-    assert_eq!(true, parity);
+    assert!(parity);
 
     let (schnorr_pubkey, parity) = SchnorrPubkey::from_pubkey(&pk).expect("Fail");
     assert_eq!(pubkey.to_hex(), schnorr_pubkey.to_hex());
-    assert_eq!(true, parity);
+    assert!(parity);
 
     let (tweaked_pubkey, tweaked_parity) = pubkey.tweak_add(tweak.to_slice()).expect("Fail");
     assert_eq!(exp_tweaked_pk.to_hex(), tweaked_pubkey.to_hex());
-    assert_eq!(true, tweaked_parity);
+    assert!(tweaked_parity);
 
     let gen_key_ret =
       SchnorrPubkey::get_tweak_add_from_privkey(&sk, tweak.to_slice()).expect("Fail");
     let (tweaked_pubkey, tweaked_parity, tweaked_privkey) = gen_key_ret;
     assert_eq!(exp_tweaked_pk.to_hex(), tweaked_pubkey.to_hex());
-    assert_eq!(true, tweaked_parity);
+    assert!(tweaked_parity);
     assert_eq!(exp_tweaked_sk.to_hex(), tweaked_privkey.to_hex());
 
     let is_valid = tweaked_pubkey
       .is_tweaked(true, &pubkey, tweak.to_slice())
       .expect("Fail");
-    assert_eq!(true, is_valid);
+    assert!(is_valid);
     let is_valid = tweaked_pubkey
       .is_tweaked(false, &pubkey, tweak.to_slice())
       .expect("Fail");
-    assert_eq!(false, is_valid);
+    assert!(!is_valid);
   }
 }

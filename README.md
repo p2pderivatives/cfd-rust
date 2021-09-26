@@ -105,10 +105,10 @@ Using pkg-config, build is quickly.
 
 ```Shell
 # The described version is an example. If you use it, please rewrite it to an appropriate version.
-wget https://github.com/p2pderivatives/cfd-rust/releases/download/v0.3.0/cfd-sys-v0.3.0-osx-xcode12.4-static-x86_64.zip
+wget https://github.com/p2pderivatives/cfd-rust/releases/download/v0.3.2/cfd-sys-v0.3.2-osx-xcode12.4-static-x86_64.zip
 
 # decompress
-sudo unzip -d / cfd-sys-v0.3.0-osx-xcode12.4-static-x86_64.zip
+sudo unzip -d / cfd-sys-v0.3.2-osx-xcode12.4-static-x86_64.zip
 # build
 cargo build
 ```
@@ -117,7 +117,7 @@ cargo build
 
 Using cmake find_package.
 
-1. get releases asset. (ex. [https://github.com/p2pderivatives/cfd-rust/releases/download/v0.3.0/cfd-sys-v0.3.0-win-vs2019-x86_64.zip](https://github.com/p2pderivatives/cfd-rust/releases/download/v0.3.0/cfd-sys-v0.3.0-win-vs2019-x86_64.zip) )
+1. get releases asset. (ex. [https://github.com/p2pderivatives/cfd-rust/releases/download/v0.3.2/cfd-sys-v0.3.2-win-vs2019-x86_64.zip](https://github.com/p2pderivatives/cfd-rust/releases/download/v0.3.2/cfd-sys-v0.3.2-win-vs2019-x86_64.zip) )
 2. Expand to PATH
 
 ---

@@ -9,7 +9,7 @@ mod tests {
   fn ext_pubkey_test() {
     // default
     let empty_key = ExtPubkey::default();
-    assert_eq!(false, empty_key.valid());
+    assert!(!empty_key.valid());
     // fail
     let extkey_fail = ExtPubkey::new("xprv9zt1onyw8BdEf7SQ6wUVH3bQQdGD9iy9QzXveQQRhX7i5iUN7jZgLbqFEe491LfjozztYa6bJAGZ65GmDCNcbjMdjZcgmdisPJwVjcfcDhV");
     assert!(extkey_fail.is_err(), "err: \"{}\"", extkey_fail.unwrap());
@@ -24,7 +24,7 @@ mod tests {
       "038746b92b722894e533dbbda3fb7fa673da00f4b309bf98a2cf586c27100004b0",
       extkey.get_pubkey().to_hex()
     );
-    assert_eq!(true, extkey.valid());
+    assert!(extkey.valid());
     // create
     let extkey2 = ExtPubkey::from_parent_info(
       Network::Testnet,
@@ -64,7 +64,7 @@ mod tests {
   fn ext_privkey_test() {
     // empty
     let empty_key = ExtPrivkey::default();
-    assert_eq!(false, empty_key.valid());
+    assert!(!empty_key.valid());
     // fail
     let extkey_fail = ExtPrivkey::new("xpub6DsNDJWpxZBXsbWsCy1VeBY8xf6hZBgznDTXSnp3FregxWoWfGsvtQ9j5wBJNPebZXD5YmhpQBV7nVjhUsUgkG9R7yE31mh6sVh2w854a1o");
     assert!(extkey_fail.is_err(), "err: \"{}\"", extkey_fail.unwrap());
@@ -83,7 +83,7 @@ mod tests {
       "73a2361673d25f998d1e9d94aabdeba8ac1ddd4628bc4f55341397d263bd560c",
       extkey.get_privkey().to_hex()
     );
-    assert_eq!(true, extkey.valid());
+    assert!(extkey.valid());
     // derive
     let derive_key1 = extkey.derive_from_number(2, true).expect("Fail");
     assert_eq!(

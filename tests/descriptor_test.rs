@@ -21,9 +21,9 @@ mod tests {
       "OP_DUP OP_HASH160 06afd46bcdfd22ef94ac122aa11f241244a37ecc OP_EQUALVERIFY OP_CHECKSIG",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(true, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(descriptor.has_key_hash());
     assert_eq!(1, descriptor.get_script_list().len());
     let key_data = descriptor.get_key_data().expect("fail");
     assert_eq!(&DescriptorKeyType::Public, key_data.get_type());
@@ -50,9 +50,9 @@ mod tests {
       "OP_0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(true, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(descriptor.has_key_hash());
     assert_eq!(1, descriptor.get_script_list().len());
     let key_data = descriptor.get_key_data().expect("fail");
     assert_eq!(&DescriptorKeyType::Public, key_data.get_type());
@@ -79,9 +79,9 @@ mod tests {
       "OP_HASH160 cc6ffbc0bf31af759451068f90ba7a0272b6b332 OP_EQUAL",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(true, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(descriptor.has_key_hash());
     assert_eq!(2, descriptor.get_script_list().len());
     let key_data = descriptor.get_key_data().expect("fail");
     assert_eq!(DescriptorKeyType::Public, *key_data.get_type());
@@ -116,9 +116,9 @@ mod tests {
       "OP_2 022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01 03acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe OP_2 OP_CHECKMULTISIG",
       descriptor.get_redeem_script().expect("Fail").to_asm()
     );
-    assert_eq!(true, descriptor.has_multisig());
-    assert_eq!(true, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
+    assert!(descriptor.has_multisig());
+    assert!(descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
     assert_eq!(1, descriptor.get_script_list().len());
     let key_list = descriptor.get_multisig_key_list().expect("Fail");
     assert_eq!(2, key_list.len());
@@ -153,9 +153,9 @@ mod tests {
     assert_eq!("OP_2 03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7 03774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb 03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a OP_3 OP_CHECKMULTISIG",
     descriptor.get_redeem_script().expect("Fail").to_asm());
     assert_eq!(1, descriptor.get_script_list().len());
-    assert_eq!(true, descriptor.has_multisig());
-    assert_eq!(true, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
+    assert!(descriptor.has_multisig());
+    assert!(descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
     let key_list = descriptor.get_multisig_key_list().expect("Fail");
     assert_eq!(3, key_list.len());
     assert_eq!(
@@ -193,9 +193,9 @@ mod tests {
       "OP_1 03f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8 03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4 02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e OP_3 OP_CHECKMULTISIG",
       descriptor.get_redeem_script().expect("Fail").to_asm()
     );
-    assert_eq!(true, descriptor.has_multisig());
-    assert_eq!(true, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
+    assert!(descriptor.has_multisig());
+    assert!(descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
     assert_eq!(2, descriptor.get_script_list().len());
     let key_list = descriptor.get_multisig_key_list().expect("Fail");
     assert_eq!(3, key_list.len());
@@ -233,9 +233,9 @@ mod tests {
       "OP_0 c7a1f1a4d6b4c1802a59631966a18359de779e8a6a65973735a3ccdfdabc407d",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
     assert_eq!(1, descriptor.get_script_list().len());
   }
 
@@ -247,9 +247,9 @@ mod tests {
       "raw(6a4c4f54686973204f505f52455455524e207472616e73616374696f6e206f7574707574207761732063726561746564206279206d6f646966696564206372656174657261777472616e73616374696f6e2e)#zf2avljj",
       descriptor.to_str()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
     assert_eq!(1, descriptor.get_script_list().len());
   }
 
@@ -270,9 +270,9 @@ mod tests {
       "OP_0 751e76e8199196d454941c45d1b3a323f1433bd6",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(true, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(descriptor.has_key_hash());
     assert_eq!(4, descriptor.get_script_list().len());
     let key_data = descriptor.get_key_data().expect("fail");
     assert_eq!(&DescriptorKeyType::Public, key_data.get_type());
@@ -307,9 +307,9 @@ mod tests {
       "OP_DUP OP_HASH160 c42e7ef92fdb603af844d064faad95db9bcdfd3d OP_EQUALVERIFY OP_CHECKSIG",
       descriptor.get_redeem_script().expect("Fail").to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(true, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
     assert_eq!(3, descriptor.get_script_list().len());
     let key_data = descriptor.get_key_data().expect("fail");
     assert_eq!(&DescriptorKeyType::Public, key_data.get_type());
@@ -336,9 +336,9 @@ mod tests {
       "OP_DUP OP_HASH160 f833c08f02389c451ae35ec797fccf7f396616bf OP_EQUALVERIFY OP_CHECKSIG",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(true, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(descriptor.has_key_hash());
     assert_eq!(1, descriptor.get_script_list().len());
     let key_data = descriptor.get_key_data().expect("fail");
     assert_eq!(&DescriptorKeyType::Bip32, key_data.get_type());
@@ -366,9 +366,9 @@ mod tests {
       "OP_DUP OP_HASH160 c21178dfb721039b6936b167657cd31ab60b1bbd OP_EQUALVERIFY OP_CHECKSIG",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(true, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(descriptor.has_key_hash());
     assert_eq!(1, descriptor.get_script_list().len());
     let key_data = descriptor.get_key_data().expect("fail");
     assert_eq!(&DescriptorKeyType::Bip32, key_data.get_type());
@@ -399,9 +399,9 @@ mod tests {
       "OP_SIZE 32 OP_EQUALVERIFY OP_SHA256 38df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b6 OP_EQUAL OP_IFDUP OP_NOTIF OP_IF 499999999 OP_CHECKLOCKTIMEVERIFY OP_0NOTEQUAL OP_ELSE OP_0 OP_ENDIF OP_NOTIF OP_0 OP_ELSE 4194305 OP_CHECKSEQUENCEVERIFY OP_ENDIF OP_ENDIF",
       descriptor.get_redeem_script().expect("Fail").to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(true, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
     assert_eq!(1, descriptor.get_script_list().len());
   }
 
@@ -426,9 +426,9 @@ mod tests {
       "OP_2 03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7 036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00 OP_2 OP_CHECKMULTISIG OP_TOALTSTACK OP_1 036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00 OP_1 OP_CHECKMULTISIG OP_FROMALTSTACK OP_ADD OP_TOALTSTACK 022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01 OP_CHECKSIG OP_FROMALTSTACK OP_ADD OP_2 OP_EQUAL",
       descriptor.get_redeem_script().expect("Fail").to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(true, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
     assert_eq!(1, descriptor.get_script_list().len());
   }
 
@@ -454,9 +454,9 @@ mod tests {
       "OP_IF OP_DUP OP_HASH160 520e6e72bcd5b616bc744092139bd759c31d6bbe OP_EQUALVERIFY OP_CHECKSIG OP_NOTIF OP_DUP OP_HASH160 06afd46bcdfd22ef94ac122aa11f241244a37ecc OP_EQUALVERIFY OP_ELSE OP_DUP OP_HASH160 5ab62f0be26fe9d6205a155403f33e2ad2d31efe OP_EQUALVERIFY OP_ENDIF OP_ELSE 02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e OP_ENDIF OP_CHECKSIG",
       descriptor.get_redeem_script().expect("Fail").to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(true, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
+    assert!(!descriptor.has_multisig());
+    assert!(descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
     assert_eq!(2, descriptor.get_script_list().len());
   }
 
@@ -470,17 +470,17 @@ mod tests {
     );
     assert_eq!(&HashType::Taproot, descriptor.get_hash_type());
     assert_eq!(
-      "bcrt1paag57xhtzja2dnzh4vex37ejnjj5p3yy2nmlgem3a4e3ud962gdqqctzwn",
+      "bcrt1pvv8jm84ye0xr7p9h8l2k58rm287nryk73cnw0nvfxyjfqqpn60gssz7u5f",
       descriptor.get_address().to_str()
     );
     assert_eq!(
-      "OP_1 ef514f1aeb14baa6cc57ab3268fb329ca540c48454f7f46771ed731e34ba521a",
+      "OP_1 630f2d9ea4cbcc3f04b73fd56a1c7b51fd3192de8e26e7cd893124900033d3d1",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
-    assert_eq!(true, descriptor.has_taproot());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
+    assert!(descriptor.has_taproot());
     assert_eq!(1, descriptor.get_script_list().len());
     assert_eq!("", descriptor.get_script_tree().to_str());
     let key_data = descriptor.get_key_data().expect("fail");
@@ -501,17 +501,17 @@ mod tests {
     );
     assert_eq!(&HashType::Taproot, descriptor.get_hash_type());
     assert_eq!(
-      "bc1p33h4j4kre3e9r4yrl35rlgrtyt2w9hw8f94zty9vacmvfgcnlqtq0txdxt",
+      "bc1p4jueea9m897g4me0ef8eyqg9x5n02jzpwnl0yydvdtrl459r3fyqg8wvnj",
       descriptor.get_address().to_str()
     );
     assert_eq!(
-      "OP_1 8c6f5956c3cc7251d483fc683fa06b22d4e2ddc7496a2590acee36c4a313f816",
+      "OP_1 acb99cf4bb397c8aef2fca4f9201053526f5484174fef211ac6ac7fad0a38a48",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
-    assert_eq!(true, descriptor.has_taproot());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
+    assert!(descriptor.has_taproot());
     assert_eq!(1, descriptor.get_script_list().len());
     assert_eq!("", descriptor.get_script_tree().to_str());
     let key_data = descriptor.get_key_data().expect("fail");
@@ -539,10 +539,10 @@ mod tests {
       "OP_1 5347c06cc9ed4b2286efcf4ed292a810ee451bdc50a4f0ab4a534a3f594763d5",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
-    assert_eq!(true, descriptor.has_taproot());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
+    assert!(descriptor.has_taproot());
     assert_eq!(1, descriptor.get_script_list().len());
     assert_eq!(
       "tl(208c6f5956c3cc7251d483fc683fa06b22d4e2ddc7496a2590acee36c4a313f816ac)",
@@ -573,10 +573,10 @@ mod tests {
       "OP_1 4f009acbd8c905be4470df1b92c70be16a71d354ba55cc0e6517853f77d79651",
       descriptor.get_address().get_locking_script().to_asm()
     );
-    assert_eq!(false, descriptor.has_multisig());
-    assert_eq!(false, descriptor.has_script_hash());
-    assert_eq!(false, descriptor.has_key_hash());
-    assert_eq!(true, descriptor.has_taproot());
+    assert!(!descriptor.has_multisig());
+    assert!(!descriptor.has_script_hash());
+    assert!(!descriptor.has_key_hash());
+    assert!(descriptor.has_taproot());
     assert_eq!(1, descriptor.get_script_list().len());
     assert_eq!(
       "{tl(208c6f5956c3cc7251d483fc683fa06b22d4e2ddc7496a2590acee36c4a313f816ac),{tl(208c6f5956c3cc7251d483fc683fa06b22d4e2ddc7496a2590acee36c4a313f816ac),tl(205cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bcac7c82012088a820e38990d0c7fc009880a9c07c23842e886c6bbdc964ce6bdd5817ad357335ee6f87936b82012088a914dd69735817e0e3f6f826a9238dc2e291184f0131876c935287)}}",
@@ -587,6 +587,43 @@ mod tests {
     assert_eq!(
       "ef514f1aeb14baa6cc57ab3268fb329ca540c48454f7f46771ed731e34ba521a",
       key_data.to_str()
+    );
+  }
+
+  #[test]
+  fn descriptor_taproot_hashonly_test() {
+    let desc = "tr(ef514f1aeb14baa6cc57ab3268fb329ca540c48454f7f46771ed731e34ba521a,{1717a480c2e3a474eed8dba83f684731243cff8ef384521936cf3a730dd0a286,{1717a480c2e3a474eed8dba83f684731243cff8ef384521936cf3a730dd0a286,80039cda864c4f2f1c87f161b0038e57fb7a4a59ff37517048696b85cdaaf911}})";
+    let desc_checksum = desc.to_string() + "#xffhk3u4";
+    let derive_path = "1";
+    let desc_obj =
+      Descriptor::with_derive_bip32path(desc, derive_path, &Network::Regtest).expect("Fail");
+    assert_eq!(desc_checksum, desc_obj.to_str());
+    assert_eq!(&HashType::Taproot, desc_obj.get_hash_type());
+    assert_eq!(
+      "bcrt1pfuqf4j7ceyzmu3rsmude93ctu948r565hf2ucrn9z7zn7a7hjegskj3rsv",
+      desc_obj.get_address().to_str()
+    );
+    assert_eq!(
+      "OP_1 4f009acbd8c905be4470df1b92c70be16a71d354ba55cc0e6517853f77d79651",
+      desc_obj.get_address().get_locking_script().to_asm()
+    );
+    assert!(!desc_obj.has_script_hash());
+    assert_eq!(1, desc_obj.get_script_list().len());
+    assert!(desc_obj.has_tapscript());
+    assert_eq!(
+      "{1717a480c2e3a474eed8dba83f684731243cff8ef384521936cf3a730dd0a286,{1717a480c2e3a474eed8dba83f684731243cff8ef384521936cf3a730dd0a286,80039cda864c4f2f1c87f161b0038e57fb7a4a59ff37517048696b85cdaaf911}}",
+      desc_obj.get_script_tree().to_str());
+    assert_eq!(
+      &DescriptorKeyType::Schnorr,
+      desc_obj.get_key_data().expect("Fail").get_type()
+    );
+    assert_eq!(
+      "ef514f1aeb14baa6cc57ab3268fb329ca540c48454f7f46771ed731e34ba521a",
+      desc_obj
+        .get_key_data()
+        .expect("Fail")
+        .get_schnorr_pubkey()
+        .to_hex()
     );
   }
 }

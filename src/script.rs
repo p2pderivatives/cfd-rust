@@ -134,7 +134,7 @@ impl Script {
   /// ```
   #[inline]
   pub fn from_data(data: &ByteData) -> Result<Script, CfdError> {
-    Script::from_slice(&data.to_slice())
+    Script::from_slice(data.to_slice())
   }
 
   /// Generate from asm string.
@@ -389,7 +389,7 @@ impl TapBranch {
   /// ```
   pub fn from_tapscript(tapscript: &Script) -> Result<TapBranch, CfdError> {
     let arr: Vec<[u8; TAPROOT_HASH_SIZE]> = vec![];
-    TapBranch::from_string_by_tapscript(&format!("tl({})", tapscript.to_hex()), &tapscript, &arr)
+    TapBranch::from_string_by_tapscript(&format!("tl({})", tapscript.to_hex()), tapscript, &arr)
   }
 
   /// Create TapBranch from branch hash only.
@@ -468,7 +468,7 @@ impl TapBranch {
         let pubkey_str = unsafe { collect_cstring_and_free(output) }?;
         let schnorr_pubkey = SchnorrPubkey::from_str(&pubkey_str)?;
         let nodes: Vec<[u8; 32]> = vec![];
-        let branch = Self::get_branch_data(&handle, &tapscript, &nodes)?;
+        let branch = Self::get_branch_data(&handle, tapscript, &nodes)?;
         Ok((branch, schnorr_pubkey))
       }
       _ => Err(handle.get_error(error_code)),
@@ -501,7 +501,7 @@ impl TapBranch {
     let handle = ScriptTreeHandle::new()?;
     Self::load_by_tree_string(&handle, tree_str, tapscript, target_nodes)?;
     let nodes: Vec<[u8; 32]> = vec![];
-    Self::get_branch_data(&handle, &tapscript, &nodes)
+    Self::get_branch_data(&handle, tapscript, &nodes)
   }
 
   fn load_by_tree_string(
@@ -516,7 +516,7 @@ impl TapBranch {
     }
     let leaf_version: u8 = TAPSCRIPT_LEAF_VERSION;
     let script_str = alloc_c_string(&tapscript.to_hex())?;
-    let tree_string = alloc_c_string(&tree_str)?;
+    let tree_string = alloc_c_string(tree_str)?;
     let control_nodes = alloc_c_string(&target_nodes_str)?;
     let error_code = unsafe {
       CfdSetScriptTreeFromString(
@@ -607,7 +607,7 @@ impl TapBranch {
   pub fn add_by_tree_string(&mut self, tree_str: &str) -> Result<(), CfdError> {
     let handle = ScriptTreeHandle::new()?;
     Self::load_by_tree_string(&handle, &self.tree_str, &self.tapscript, &self.target_nodes)?;
-    let tree_string = alloc_c_string(&tree_str)?;
+    let tree_string = alloc_c_string(tree_str)?;
     let error_code = unsafe {
       CfdAddTapBranchByScriptTreeString(
         handle.as_handle(),
@@ -847,11 +847,11 @@ impl TapBranch {
     nodes: &[[u8; 32]],
   ) -> Result<TapBranch, CfdError> {
     let mut branch = TapBranch::default();
-    let count = Self::get_branch_count_internal(&handle)?;
+    let mut tapscript: *mut c_char = ptr::null_mut();
+    let mut leaf_version: c_uchar = 0;
+    let mut tap_leaf_hash: *mut c_char = ptr::null_mut();
+    let count = Self::get_branch_count_internal(handle)?;
     if count == 0 {
-      let mut tapscript: *mut c_char = ptr::null_mut();
-      let mut tap_leaf_hash: *mut c_char = ptr::null_mut();
-      let mut leaf_version: c_uchar = 0;
       let error_code = unsafe {
         CfdGetBaseTapLeaf(
           handle.as_handle(),
@@ -873,8 +873,6 @@ impl TapBranch {
       }?;
     } else {
       let mut branch_hash: *mut c_char = ptr::null_mut();
-      let mut tapscript: *mut c_char = ptr::null_mut();
-      let mut leaf_version: c_uchar = 0;
       let mut depth_by_leaf_or_end: c_uchar = 0;
       let index = count - 1;
       let error_code = unsafe {

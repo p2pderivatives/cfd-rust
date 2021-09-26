@@ -2,14 +2,16 @@ extern crate cfd_rust;
 
 #[cfg(test)]
 mod tests {
-  use cfd_rust::{Address, AddressType, Network, Pubkey, SchnorrPubkey, Script, WitnessVersion};
+  use cfd_rust::{
+    Address, AddressType, HashType, Network, Pubkey, SchnorrPubkey, Script, WitnessVersion,
+  };
   use std::str::FromStr;
 
   #[test]
   fn address_test() {
     // default
     let empty_addr = Address::default();
-    assert_eq!(false, empty_addr.valid());
+    assert!(!empty_addr.valid());
     // default: bitcoin
     let pubkey =
       Pubkey::from_str("036b67e1bd3bd3efbc37fdc738ab159a4aa527057eae12a0c4b07d3132580dcdfd")
@@ -83,7 +85,7 @@ mod tests {
       "a91405bc4d5d12925f008cef06ba387ade16a49d7a3187",
       p2sh_addr.get_locking_script().to_hex()
     );
-    assert_eq!(true, p2sh_addr.valid());
+    assert!(p2sh_addr.valid());
 
     // get_multisig_addresses
     let multisig_script = Script::from_hex("522102522952c3fc2a53a8651b08ce10988b7506a3b40a5c26f9648a911be33e73e1a0210340b52ae45bc1be5de083f1730fe537374e219c4836400623741d2a874e60590c21024a3477bc8b933a320eb5667ee72c35a81aa155c8e20cc51c65fb666de3a43b8253ae").expect("fail");
@@ -178,5 +180,62 @@ mod tests {
       "tb1pzamhq9jglfxaj0r5ahvatr8uc77u973s5tm04yytdltsey5r8naskf8ee6",
       addr_taproot2.to_str()
     );
+
+    let fedpeg_script = Script::from_hex("522102baae8e066e4f2a1da4b731017697bb8fcacc60e4569f3ec27bc31cf3fb13246221026bccd050e8ecf7a702bc9fb63205cfdf278a22ba8b1f1d3ca3d8e5b38465a9702103430d354b89d1fbe43eb54ea138a4aee1076e4c54f4c805f62f9cee965351a1d053ae").expect("Fail");
+    let pegin_pubkey =
+      Pubkey::from_str("027592aab5d43618dda13fba71e3993cd7517a712d3da49664c06ee1bd3d1f70af")
+        .expect("Fail");
+    let pegin_addr_data = Address::pegin_by_pubkey(
+      &fedpeg_script,
+      &pegin_pubkey,
+      &HashType::P2shP2wsh,
+      &Network::Mainnet,
+    )
+    .expect("Fail");
+    assert_eq!(
+      "39cTKhjjh9YWDQT5hhSRkQwjvmpc4d1C7k",
+      pegin_addr_data.address.to_str()
+    );
+    assert_eq!(
+      "0014925d4028880bd0c9d68fbc7fc7dfee976698629c",
+      pegin_addr_data.claim_script.to_hex()
+    );
+    assert_eq!("522103e3b215b75e015a5948efb043079d325a90e68b19112211ae3c1ff62366d441732102779396d5c2348c33bcbdcfd87bf59646ccbebc94bacf4750a9c5245dd297213021036416a1c936d3dc84747d5e544c200578cccfb6ec62dda48df79a0a6a8c7e63fa53ae",
+    pegin_addr_data.tweaked_fedpeg_script.to_hex());
+
+    let redeem_script = Script::from_hex("522103a7bd50beb3aff9238336285c0a790169eca90b7ad807abc4b64897ca1f6dedb621039cbaf938d050dd2582e4c2f56d1f75cfc9d165f2f3270532363d9871fb7be14252ae").expect("Fail");
+    let pegin_addr_data2 = Address::pegin_by_script(
+      &fedpeg_script,
+      &redeem_script,
+      &HashType::P2shP2wsh,
+      &Network::Mainnet,
+    )
+    .expect("Fail");
+    assert_eq!(
+      "3DZHAW3TmdwfGuJTGKatD7XpCNJvnX6GiE",
+      pegin_addr_data2.address.to_str()
+    );
+    assert_eq!(
+      "0020c45384fa00fe363ed60968fff46541c89bc1766686c279ffdf0a335b80cad728",
+      pegin_addr_data2.claim_script.to_hex()
+    );
+    assert_eq!("52210272d86fcc18fc129a3fe72ed268356735a176f01ba1bb6b5a6e5181735570fca021021909156e0a206a5a8f47bee2418eebd6db0ecae9b4810d761117fa7891f86f7021026e90023fe74aff9f5a26c76ca88eb19fd4477ae43cebb9d2e81e197961b263b753ae",
+    pegin_addr_data2.tweaked_fedpeg_script.to_hex());
+
+    let desc1 = "wpkh(tpubDASgDECJvTMzUgS7GkSCxQAAWPveW7BeTPSvbi1wpUe1Mq1v743FRw1i7vTavjAb3D3Y8geCTYw2ezgiVS7SFXDXS6NpZmvr6XPjPvg632y)";
+    let (pegout_addr, base_desc) = Address::pegout(Network::Regtest, desc1, 0).expect("Fail");
+    assert_eq!(
+      "bcrt1qa77w63m523kq82z4fn3d5f7qxqxfm4pmdthkdf",
+      pegout_addr.to_str()
+    );
+    assert_eq!("wpkh(tpubDASgDECJvTMzUgS7GkSCxQAAWPveW7BeTPSvbi1wpUe1Mq1v743FRw1i7vTavjAb3D3Y8geCTYw2ezgiVS7SFXDXS6NpZmvr6XPjPvg632y)",
+    base_desc);
+
+    let pegout_pubkey2 = "xpub67v4wfueMiZVkc7UbutFgPiptQw4kkNs89ooNMrwht8xEjnZZim1rNZHhEdrLejB99fiBdnWNNAB8hmUK7tCo5Ua6UtHzwVLj2Bzpch7vB2";
+    let (pegout_addr2, base_desc2) =
+      Address::pegout(Network::Mainnet, pegout_pubkey2, 0).expect("Fail");
+    assert_eq!("1MMxsm4QG8NRHqaFZaUTFQQ9c9dEHUPWnD", pegout_addr2.to_str());
+    assert_eq!("pkh(xpub67v4wfueMiZVkc7UbutFgPiptQw4kkNs89ooNMrwht8xEjnZZim1rNZHhEdrLejB99fiBdnWNNAB8hmUK7tCo5Ua6UtHzwVLj2Bzpch7vB2)",
+    base_desc2);
   }
 }

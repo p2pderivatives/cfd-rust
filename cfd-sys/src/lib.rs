@@ -124,6 +124,16 @@ fns! {
     claim_script: *mut *mut c_char,
     tweaked_fedpeg_script: *mut *mut c_char,
   ) -> c_int;
+  pub fn CfdGetPegoutAddress(
+    handle: *const c_void,
+    mainchain_network: c_int,
+    elements_network: c_int,
+    descriptor: *const c_char,
+    bip32_counter: c_uint,
+    address_type: c_int,
+    mainchain_address: *mut *mut c_char,
+    base_descriptor: *mut *mut c_char,
+  ) -> c_int;
   pub fn CfdParseDescriptor(
     handle: *const c_void,
     descriptor: *const i8,
@@ -185,6 +195,61 @@ fns! {
     descriptor: *const c_char,
     descriptor_added_checksum: *mut *mut c_char,
   ) -> c_int;
+
+  pub fn CfdInitializeBlockHandle(
+    handle: *const c_void,
+    network_type: c_int,
+    block_hex: *const c_char,
+    block_handle: *mut *mut c_void,
+  ) -> c_int;
+  pub fn CfdFreeBlockHandle(
+    handle: *const c_void,
+    block_handle: *const c_void,
+  ) -> c_int;
+  pub fn CfdGetBlockHash(
+    handle: *const c_void,
+    block_handle: *const c_void,
+    block_hash: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdGetBlockHeaderData(
+    handle: *const c_void,
+    block_handle: *const c_void,
+    version: *mut c_uint,
+    prev_block_hash: *mut *mut c_char,
+    merkle_root_hash: *mut *mut c_char,
+    time: *mut c_uint,
+    bits: *mut c_uint,
+    nonce: *mut c_uint,
+  ) -> c_int;
+  pub fn CfdGetTransactionFromBlock(
+    handle: *const c_void,
+    block_handle: *const c_void,
+    txid: *const c_char,
+    tx_hex: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdGetTxOutProof(
+    handle: *const c_void,
+    block_handle: *const c_void,
+    txid: *const c_char,
+    txout_proof: *mut *mut c_char,
+  ) -> c_int;
+  pub fn CfdExistTxidInBlock(
+    handle: *const c_void,
+    block_handle: *const c_void,
+    txid: *const c_char,
+  ) -> c_int;
+  pub fn CfdGetTxCountInBlock(
+    handle: *const c_void,
+    block_handle: *const c_void,
+    tx_count: *mut c_uint,
+  ) -> c_int;
+  pub fn CfdGetTxidFromBlock(
+    handle: *const c_void,
+    block_handle: *const c_void,
+    index: c_uint,
+    txid: *mut *mut c_char,
+  ) -> c_int;
+
   pub fn CfdCreateExtkeyFromSeed(
     handle: *const c_void,
     seed_hex: *const i8,
@@ -242,7 +307,7 @@ fns! {
     network_type: c_int,
     pubkey: *mut *mut c_char,
   ) -> c_int;
-  pub fn CfdGetExtkeyInformation(
+  pub fn CfdGetExtkeyInfo(
     handle: *const c_void,
     extkey: *const i8,
     version: *mut *mut c_char,
@@ -250,6 +315,8 @@ fns! {
     chain_code: *mut *mut c_char,
     depth: *mut c_uint,
     child_number: *mut c_uint,
+    key_type: *mut c_int,
+    network_type: *mut c_int,
   ) -> c_int;
 
   pub fn CfdInitializeMnemonicWordList(
@@ -753,6 +820,13 @@ fns! {
     vout: c_uint,
     script_sig: *const i8,
   ) -> c_int;
+  pub fn CfdUpdateTxInSequence(
+    handle: *const c_void,
+    create_handle: *const c_void,
+    txid: *const i8,
+    vout: c_uint,
+    sequence: c_uint,
+  ) -> c_int;
   pub fn CfdSetTransactionUtxoData(
     handle: *const c_void,
     create_handle: *const c_void,
@@ -1082,7 +1156,7 @@ fns! {
     is_blind_issuance: bool,
     is_pegin: bool,
     pegin_btc_tx_size: c_uint,
-    fedpeg_script: *const i8,
+    claim_script: *const i8,
   ) -> c_int;
   pub fn CfdAddTxInTemplateForEstimateFee(
     handle: *const c_void,
@@ -1095,7 +1169,22 @@ fns! {
     is_blind_issuance: bool,
     is_pegin: bool,
     pegin_btc_tx_size: c_uint,
-    fedpeg_script: *const i8,
+    claim_script: *const i8,
+    scriptsig_template: *const i8,
+  ) -> c_int;
+  pub fn CfdAddTxInputForEstimateFee(
+    handle: *const c_void,
+    fee_handle: *const c_void,
+    txid: *const i8,
+    vout: c_uint,
+    descriptor: *const i8,
+    asset: *const i8,
+    is_issuance: bool,
+    is_blind_issuance: bool,
+    is_pegin: bool,
+    claim_script: *const i8,
+    pegin_btc_tx_size: c_uint,
+    pegin_txoutproof_size: c_uint,
     scriptsig_template: *const i8,
   ) -> c_int;
   pub fn CfdSetOptionEstimateFee(
@@ -1136,7 +1225,7 @@ fns! {
     is_blind_issuance: bool,
     is_pegin: bool,
     pegin_btc_tx_size: c_uint,
-    fedpeg_script: *const i8,
+    claim_script: *const i8,
   ) -> c_int;
   pub fn CfdAddTxInTemplateForFundRawTx(
     handle: *const c_void,
@@ -1150,7 +1239,23 @@ fns! {
     is_blind_issuance: bool,
     is_pegin: bool,
     pegin_btc_tx_size: c_uint,
-    fedpeg_script: *const i8,
+    claim_script: *const i8,
+    scriptsig_template: *const i8,
+  ) -> c_int;
+  pub fn CfdAddTxInputForFundRawTx(
+    handle: *const c_void,
+    fund_handle: *const c_void,
+    txid: *const i8,
+    vout: c_uint,
+    amount: c_longlong,
+    descriptor: *const i8,
+    asset: *const i8,
+    is_issuance: bool,
+    is_blind_issuance: bool,
+    is_pegin: bool,
+    claim_script: *const i8,
+    pegin_btc_tx_size: c_uint,
+    pegin_txoutproof_size: c_uint,
     scriptsig_template: *const i8,
   ) -> c_int;
   pub fn CfdAddUtxoForFundRawTx(
@@ -1323,6 +1428,11 @@ fns! {
       handle: *const c_void, tx_data_handle: *const c_void, txid: *mut *mut c_char, wtxid: *mut *mut c_char,
       wit_hash: *mut *mut c_char, size: *mut c_uint, vsize: *mut c_uint, weight: *mut c_uint,
       version: *mut c_uint, locktime: *mut c_uint) -> c_int;
+  pub fn CfdHasPegoutConfidentialTxOut(
+    handle: *const c_void, tx_data_handle: *const c_void, index: c_uint) -> c_int;
+  pub fn CfdGetPegoutMainchainAddress(
+      handle: *const c_void, tx_data_handle: *const c_void, index: c_uint,
+      mainchain_network: c_int, mainchain_address: *mut *mut c_char) -> c_int;
   pub fn CfdGetTxInIssuanceInfoByHandle(
       handle: *const c_void, tx_data_handle: *const c_void, index: c_uint, entropy: *mut *mut c_char,
       nonce: *mut *mut c_char, asset_amount: *mut c_longlong, asset_value: *mut *mut c_char,
@@ -1436,6 +1546,19 @@ fns! {
       master_online_key: *const c_char, mainchain_output_descriptor: *const c_char,
       bip32_counter: c_uint, whitelist: *const c_char,
       mainchain_address: *mut *mut c_char) -> c_int;
+  pub fn CfdUnblindTxOutData(
+      handle: *const c_void,
+      blinding_key: *const c_char,
+      locking_script: *const c_char,
+      asset_commitment: *const c_char,
+      value_commitment: *const c_char,
+      commitment_nonce: *const c_char,
+      rangeproof: *const c_char,
+      asset: *mut *mut c_char,
+      amount: *mut c_longlong,
+      asset_blind_factor: *mut *mut c_char,
+      value_blind_factor: *mut *mut c_char,
+  ) -> c_int;
   pub fn CfdCreatePsbtHandle(
     handle: *const c_void, net_type: c_int, psbt_string: *const c_char,
     tx_hex_string: *const c_char, version: c_uint, locktime: c_uint,
