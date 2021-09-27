@@ -684,6 +684,11 @@ impl Descriptor {
     Descriptor::multisig_base(pubkey_list, require_num, hash_type, network_type, true)
   }
 
+  pub fn taproot_single(schnorr_pubkey: &SchnorrPubkey) -> Result<Descriptor, CfdError> {
+    let desc = format!("tr({})", schnorr_pubkey.to_hex());
+    Descriptor::new(&desc, &Network::Mainnet)
+  }
+
   fn multisig_base(
     pubkey_list: &[Pubkey],
     require_num: u8,
@@ -798,15 +803,15 @@ impl Descriptor {
               let schnorr_pubkey_obj = &str_list[6];
               let tree_string_obj = &str_list[7];
               let addr = match addr_str.is_empty() {
-                false => Address::from_string(&addr_str)?,
+                false => Address::from_string(addr_str)?,
                 _ => Address::default(),
               };
               let script = match script_str.is_empty() {
-                false => Script::from_hex(&script_str)?,
+                false => Script::from_hex(script_str)?,
                 _ => Script::default(),
               };
               let script_tree = match tree_string_obj.is_empty() {
-                false => TapBranch::from_string(&tree_string_obj)?,
+                false => TapBranch::from_string(tree_string_obj)?,
                 _ => TapBranch::default(),
               };
               if is_multisig {
@@ -818,10 +823,10 @@ impl Descriptor {
                 DescriptorKeyType::Null => KeyData::default(),
                 _ => Descriptor::collect_key_data(
                   key_type,
-                  &pubkey_obj,
-                  &ext_pubkey_obj,
-                  &ext_privkey_obj,
-                  &schnorr_pubkey_obj,
+                  pubkey_obj,
+                  ext_pubkey_obj,
+                  ext_privkey_obj,
+                  schnorr_pubkey_obj,
                 )?,
               };
               Ok(DescriptorScriptData {
@@ -897,10 +902,10 @@ impl Descriptor {
             let mut addr = Address::default();
             let mut script = Script::default();
             if !addr_str.is_empty() {
-              addr = Address::from_string(&addr_str)?;
+              addr = Address::from_string(addr_str)?;
             }
             if !script_str.is_empty() {
-              script = Script::from_hex(&script_str)?;
+              script = Script::from_hex(script_str)?;
             }
             let type_obj = DescriptorScriptType::from_c_value(script_type);
             let hash_type_obj = HashType::from_c_value(hash_type);
@@ -908,9 +913,9 @@ impl Descriptor {
               DescriptorScriptType::Pk | DescriptorScriptType::Pkh | DescriptorScriptType::Wpkh => {
                 let key_data = Descriptor::collect_key_data(
                   key_type,
-                  &pubkey_obj,
-                  &ext_pubkey_obj,
-                  &ext_privkey_obj,
+                  pubkey_obj,
+                  ext_pubkey_obj,
+                  ext_privkey_obj,
                   "",
                 )?;
                 Ok(DescriptorScriptData::from_pubkey(
@@ -971,9 +976,9 @@ impl Descriptor {
                 } else {
                   let key_data = Descriptor::collect_key_data(
                     key_type,
-                    &pubkey_obj,
-                    &ext_pubkey_obj,
-                    &ext_privkey_obj,
+                    pubkey_obj,
+                    ext_pubkey_obj,
+                    ext_privkey_obj,
                     "",
                   )?;
                   Ok(DescriptorScriptData::from_pubkey(
@@ -1103,6 +1108,10 @@ impl Descriptor {
 
   pub fn has_taproot(&self) -> bool {
     self.root_data.script_type == DescriptorScriptType::Taproot
+  }
+
+  pub fn has_tapscript(&self) -> bool {
+    self.has_taproot() && !self.root_data.script_tree.to_str().is_empty()
   }
 
   pub fn get_key_data(&self) -> Result<&KeyData, CfdError> {

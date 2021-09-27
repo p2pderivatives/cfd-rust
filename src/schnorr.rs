@@ -556,7 +556,7 @@ pub struct SchnorrPubkey {
 impl SchnorrPubkey {
   fn from_bytes(data: &[u8]) -> SchnorrPubkey {
     SchnorrPubkey {
-      data: copy_array_32byte(&data),
+      data: copy_array_32byte(data),
     }
   }
 

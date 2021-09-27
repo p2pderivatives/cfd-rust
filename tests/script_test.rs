@@ -3,7 +3,7 @@ extern crate sha2;
 
 #[cfg(test)]
 mod tests {
-  use cfd_rust::{ByteData, Privkey, Pubkey, SchnorrPubkey, Script, TapBranch};
+  use cfd_rust::{ByteData, Network, Privkey, Pubkey, SchnorrPubkey, Script, TapBranch};
   use std::str::FromStr;
 
   #[test]
@@ -105,8 +105,8 @@ mod tests {
         .expect("Fail")
         .to_32byte_array(),
     ];
-    let tree2 = TapBranch::from_string_by_tapscript(&tree_str, &script_op_true, &control_nodes)
-      .expect("Fail");
+    let tree2 =
+      TapBranch::from_string_by_tapscript(tree_str, &script_op_true, &control_nodes).expect("Fail");
     assert_eq!(5, tree2.get_branch_count().expect("Fail"));
     assert_eq!(tree_str, tree2.to_str());
     let node_list = tree2.get_target_nodes();
@@ -124,11 +124,44 @@ mod tests {
     let empty_nodes: Vec<[u8; 32]> = vec![];
     let mut tree3 = TapBranch::from_string_by_tapscript(
       "{{tl(20ac52f50b28cdd4d3bcb7f0d5cb533f232e4c4ef12fbf3e718420b84d4e3c3440ac),{tl(2057bf643684f6c5c75e1cdf45990036502a0d897394013210858cdabcbb95a05aac),tl(51)}},tl(2057bf643684f6c5c75e1cdf45990036502a0d897394013210858cdabcbb95a05aad205bec1a08fa3443176edd0a08e2a64642f45e57543b62bffe43ec350edc33dc22ac)}",
-      &&script_op_true,
-      &&empty_nodes,
+      &script_op_true,
+      &empty_nodes,
     ).expect("Fail");
     tree3.add_by_tapbranch(&branch).expect("Fail");
     tree3.add_by_tree_string("tl(2008f8280d68e02e807ccffee141c4a6b7ac31d3c283ae0921892d95f691742c44ad20b0f8ce3e1df406514a773414b5d9e5779d8e68ce816e9db39b8e53255ac3b406ac)").expect("Fail");
     assert_eq!(tree2.to_str(), tree3.to_str());
+  }
+
+  #[test]
+  fn empty_taproot_test() {
+    let tree = TapBranch::default();
+    let internal_pubkey =
+      SchnorrPubkey::from_str("1777701648fa4dd93c74edd9d58cfcc7bdc2fa30a2f6fa908b6fd70c92833cfb")
+        .expect("Fail");
+    let internal_privkey =
+      Privkey::from_str("305e293b010d29bf3c888b617763a438fee9054c8cab66eb12ad078f819d9f27")
+        .expect("Fail");
+
+    let (tweaked_pubkey, addr, control_block) = tree
+      .get_tweaked_pubkey(&internal_pubkey, &Network::Mainnet)
+      .expect("Fail");
+    assert_eq!(
+      "cc3b1538e0c8144375f71e848b12d609d743992fddfc60dd6ca9b33b8392f27a",
+      tweaked_pubkey.to_hex()
+    );
+    assert_eq!("", tree.get_tapscript().to_hex());
+    assert_eq!(
+      "bc1pesa32w8qeq2yxa0hr6zgkykkp8t58xf0mh7xphtv4xenhquj7faqrux5cd",
+      addr.to_str(),
+    );
+    assert_eq!(
+      "c11777701648fa4dd93c74edd9d58cfcc7bdc2fa30a2f6fa908b6fd70c92833cfb",
+      control_block.to_hex(),
+    );
+    let key = tree.get_tweaked_privkey(&internal_privkey).expect("Fail");
+    assert_eq!(
+      "3a56ec9129732312a78db4b845138a3180c102621d7381ae6e6a5d530f14856a",
+      key.to_hex()
+    );
   }
 }

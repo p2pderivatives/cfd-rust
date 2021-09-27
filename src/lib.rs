@@ -4,6 +4,7 @@
 #![crate_name = "cfd_rust"]
 
 pub mod address;
+pub mod block;
 pub mod common;
 pub mod confidential_address;
 pub mod confidential_transaction;
@@ -25,6 +26,8 @@ pub use address::Address;
 pub use address::AddressType;
 pub use address::HashType;
 pub use address::WitnessVersion;
+pub use block::Block;
+pub use block::BlockHeader;
 pub use confidential_address::ConfidentialAddress;
 pub use confidential_transaction::decode_raw_transaction;
 pub use confidential_transaction::get_default_blinding_key;

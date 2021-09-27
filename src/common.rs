@@ -97,7 +97,7 @@ pub enum Network {
 }
 
 impl Network {
-  pub(in crate) fn to_c_value(&self) -> c_int {
+  pub(in crate) fn to_c_value(self) -> c_int {
     match self {
       Network::Mainnet => 0,
       Network::Testnet => 1,
@@ -125,6 +125,10 @@ impl Network {
       Network::Mainnet | Network::Testnet | Network::Regtest => false,
       Network::LiquidV1 | Network::ElementsRegtest | Network::CustomChain => true,
     }
+  }
+
+  pub fn is_mainnet(&self) -> bool {
+    matches!(self, Network::LiquidV1 | Network::Mainnet)
   }
 
   pub fn to_str(&self) -> &str {
@@ -541,7 +545,7 @@ impl FromStr for ReverseContainer {
       let byte_data = ByteData::from_slice_reverse(&bytes);
       let reverse_bytes = byte_data.to_slice();
       let data = ReverseContainer {
-        data: copy_array_32byte(&reverse_bytes),
+        data: copy_array_32byte(reverse_bytes),
       };
       Ok(data)
     }
